@@ -51,3 +51,4 @@ Architecture is enforced as a structural constraint, not a prompt suggestion.
 ---
 **Author:** Subham Gupta — Staff Architect
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0077B5?logo=linkedin)](https://linkedin.com/in/subham-gupta-0a05a058)
+[![Email](https://img.shields.io/badge/Email-subhamviky@gmail.com-D14836?logo=gmail)](mailto:subhamviky@gmail.com)
