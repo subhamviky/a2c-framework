@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/subhamviky/a2c-framework/schemas/scaffold-config.json",
+  "title": "P0 Scaffold Configuration",
+  "description": "Configuration schema for BaseProjectBootstrapper — P0 extension for A2C Framework",
+  "type": "object",
+  "required": ["scaffold"],
+  "properties": {
+    "scaffold": {
+      "type": "object",
+      "required": ["runtime", "platform", "build_tool", "project_name"],
+      "properties": {
+        "source":          {"type": "string",  "enum": ["json", "prompt", "inline"], "default": "inline"},
+        "runtime":         {"type": "string",  "enum": ["python", "java", "node", "go"]},
+        "runtime_version": {"type": "string",  "examples": ["3.12", "21", "20", "1.22"]},
+        "platform":        {"type": "string",  "enum": ["aws", "gcp", "azure", "standalone"]},
+        "project_name":    {"type": "string",  "description": "PascalCase project name", "examples": ["SettlementEngine"]},
+        "package_name":    {"type": "string",  "description": "Python snake_case package name", "examples": ["settlement_engine"]},
+        "group_id":        {"type": "string",  "description": "Java Maven group ID", "examples": ["com.company.domain"]},
+        "artifact_id":     {"type": "string",  "description": "Java Maven artifact ID (kebab-case)", "examples": ["settlement-engine"]},
+        "build_tool":      {"type": "string",  "enum": ["poetry", "pip", "maven", "gradle", "npm", "go_modules"]},
+        "project_type":    {"type": "string",  "enum": ["fastapi_microservice", "spring_boot", "lambda", "langgraph_agent", "library"]},
+        "dependencies":    {"type": "array",   "items": {"type": "string"}, "description": "Runtime dependencies"},
+        "dev_dependencies":{"type": "array",   "items": {"type": "string"}, "description": "Dev/test dependencies"},
+        "spring_boot_version": {"type": "string", "default": "3.3.0"},
+        "java_source_version": {"type": "string", "default": "21"},
+        "packaging":       {"type": "string",  "enum": ["jar", "war"], "default": "jar"},
+        "python_requires": {"type": "string",  "default": ">=3.12"},
+        "output_path":     {"type": "string",  "default": "./", "description": "Base output directory"},
+        "license":         {"type": "string",  "enum": ["Apache-2.0", "MIT", "PROPRIETARY"], "default": "Apache-2.0"},
+        "git_init":        {"type": "boolean", "default": true},
+        "include_docker":  {"type": "boolean", "default": true},
+        "include_makefile":{"type": "boolean", "default": true}
+      }
+    },
+    "a2c": {
+      "type": "object",
+      "description": "Optional A2C code generation section. When present, BootstrapAndGenerateWorkflow chains P0 into A2C after scaffolding.",
+      "properties": {
+        "enabled":       {"type": "boolean", "default": false, "description": "Set true to chain into A2C after bootstrap"},
+        "project_type":  {"type": "string",  "examples": ["FastAPI Microservice", "Spring Boot", "LangGraph Agent"]},
+        "mandatory_nfrs":{"type": "array",   "items": {"type": "string"}, "description": "NFRs to pass to A2C (A2C will add mandatory ones)"},
+        "target_cloud":  {"type": "string",  "enum": ["aws", "gcp", "azure", "standalone"]},
+        "context":       {"type": "string",  "description": "Domain context for A2C code generation prompt"}
+      }
+    }
+  },
+  "examples": [
+    {
+      "scaffold": {
+        "source": "json",
+        "runtime": "python",
+        "runtime_version": "3.12",
+        "platform": "aws",
+        "build_tool": "poetry",
+        "project_type": "fastapi_microservice",
+        "project_name": "SettlementEngine",
+        "package_name": "settlement_engine",
+        "output_path": "./generated/",
+        "license": "Apache-2.0",
+        "git_init": true,
+        "include_docker": true,
+        "include_makefile": true,
+        "dependencies": ["fastapi>=0.111.0","uvicorn[standard]>=0.30.0","pydantic>=2.7.0","structlog>=24.1.0","opentelemetry-sdk>=1.24.0","boto3>=1.34.0","langgraph>=0.1.0","pybreaker>=1.0.1","tenacity>=8.3.0"],
+        "dev_dependencies": ["pytest>=8.2.0","pytest-asyncio>=0.23.0","ruff>=0.4.0","mypy>=1.10.0"]
+      },
+      "a2c": {
+        "enabled": true,
+        "project_type": "FastAPI Microservice",
+        "mandatory_nfrs": ["Idempotency", "Observability"],
+        "target_cloud": "aws",
+        "context": "Financial settlement microservice with saga orchestration and RAG-powered audit"
+      }
+    },
+    {
+      "scaffold": {
+        "source": "json",
+        "runtime": "java",
+        "runtime_version": "21",
+        "platform": "aws",
+        "build_tool": "maven",
+        "project_type": "spring_boot",
+        "project_name": "FinancialSettlementPlatform",
+        "group_id": "com.subhamviky",
+        "artifact_id": "financial-settlement-platform",
+        "spring_boot_version": "3.3.0",
+        "java_source_version": "21",
+        "packaging": "jar",
+        "output_path": "./generated/",
+        "license": "Apache-2.0",
+        "include_docker": true,
+        "include_makefile": true,
+        "dependencies": ["web","data-jpa","kafka","actuator","data-redis"],
+        "dev_dependencies": []
+      },
+      "a2c": {
+        "enabled": true,
+        "project_type": "Spring Boot",
+        "mandatory_nfrs": ["Idempotency", "Observability", "CircuitBreaker"],
+        "target_cloud": "aws",
+        "context": "Java Spring Boot settlement platform with Kafka, Redis AOP idempotency, double-entry ledger"
+      }
+    }
+  ]
+}
