@@ -49,6 +49,45 @@ The agent is governed by E2A. The generated code follows E2A.
 Architecture is enforced as a structural constraint, not a prompt suggestion.
 
 ---
+
+## P0 Extension — Project Bootstrap Framework
+
+P0 extends A2C with Phase Zero scaffolding: generating everything a project needs *before* A2C generates business logic.
+
+**Why a separate class (not an extension):** `bootstrap()` runs once per project at creation. `SDLCAssistantAgent.run()` runs whenever a new component is generated. Merging them would force re-scaffolding on every code generation call. The correct design: two independent classes composed via `BootstrapAndGenerateWorkflow`.
+
+```python
+# Option 1 — Bootstrap only
+bootstrapper = ProjectBootstrapperFactory.create(request)
+result = bootstrapper.bootstrap(request)
+
+# Option 2 — Full pipeline: P0 scaffold -> A2C generation
+workflow = BootstrapAndGenerateWorkflow(config=config)
+result = workflow.execute(request, config)
+```
+
+**Single scaffold-config.json drives both phases:**
+
+```json
+{
+  "scaffold": {
+    "runtime": "python", "build_tool": "poetry",
+    "project_name": "SettlementEngine", "platform": "aws"
+  },
+  "a2c": {
+    "enabled": true, "project_type": "FastAPI Microservice",
+    "mandatory_nfrs": ["Idempotency", "Observability"]
+  }
+}
+```
+
+**What P0 generates in one `bootstrap()` call:**
+`pyproject.toml` / `pom.xml` / `go.mod` · Full directory tree · `.gitignore` · `.env.example` · `application.yml` · `README.md` · `LICENSE` · Multi-stage `Dockerfile` (non-root UID 1001, HEALTHCHECK) · `.dockerignore` · `Makefile` · `.github/workflows/`
+
+See `base_project_bootstrapper.py` and `scaffold-config-schema.json` in this repo.
+
+---
+
 **Author:** Subham Gupta — Staff Architect
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0077B5?logo=linkedin)](https://linkedin.com/in/subham-gupta-0a05a058)
 [![Email](https://img.shields.io/badge/Email-subhamviky@gmail.com-D14836?logo=gmail)](mailto:subhamviky@gmail.com)
