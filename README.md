@@ -88,6 +88,42 @@ See `base_project_bootstrapper.py` and `scaffold-config-schema.json` in this rep
 
 ---
 
+## G2C Extension — Generate-to-Class Framework
+
+G2C is the top layer of the stack. It uses E2A-governed generator classes to produce E2A
+abstract classes, A2C abstract classes, and their concrete inherited implementations via LLM.
+**The framework stack is self-generating.**
+
+**Four generator classes, one entry point:**
+
+| Class | Generates | P0 scaffold? |
+|---|---|---|
+| `E2AAbstractClassGenerator` | `e2a_base.py` or `E2ABase.java` | No |
+| `A2CAbstractClassGenerator` | `a2c_base.py` | No |
+| `E2AInheritedClassGenerator` | Abstract class + project scaffold + agent class | Yes |
+| `A2CInheritedClassGenerator` | E2A + A2C abstract classes + scaffold + SDLC subclass | Yes |
+
+**One call, complete output:**
+```python
+# DeveloperPlatformWorkflow chains all generators automatically
+workflow = DeveloperPlatformWorkflow(config=config)
+result = workflow.generate({
+    'generator_type': 'e2a_inherited',
+    'runtime':        'python',
+    'agent_name':     'SettlementAgent',
+    'user_prompt':    'SAP TM financial settlement agent',
+    'output_path':    './'
+}, config)
+# G2C generates: abstract base class, P0 scaffold, SettlementAgent class
+# Validates via GeneratorCriticAgent (score >= 0.75) before writing any file
+```
+
+**Runtime-agnostic:** generator classes are Python; output is Python, Java, Node, or Go
+based on `request['runtime']`. Zero generator code changes per runtime swap.
+
+See `G2C_GenerateToClass_Framework_Reference.docx` in this repo for the full specification.
+---
+
 **Author:** Subham Gupta — Staff Architect
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0077B5?logo=linkedin)](https://linkedin.com/in/subham-gupta-0a05a058)
 [![Email](https://img.shields.io/badge/Email-subhamviky@gmail.com-D14836?logo=gmail)](mailto:subhamviky@gmail.com)
