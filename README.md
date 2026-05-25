@@ -121,7 +121,7 @@ result = workflow.generate({
 **Runtime-agnostic:** generator classes are Python; output is Python, Java, Node, or Go
 based on `request['runtime']`. Zero generator code changes per runtime swap.
 
-See `G2C_GenerateToClass_Framework_Reference.docx` in this repo for the full specification.
+See `G2C_Framework_Reference.pdf` in this repo for the full specification.
 ---
 
 **Author:** Subham Gupta — Staff Architect
