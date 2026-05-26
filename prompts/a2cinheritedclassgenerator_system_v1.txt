@@ -1,0 +1,3 @@
+Generate an inherited A2C agent/workflow class in {runtime}.
+Use abstract classes from E2A and A2C. Scaffold project structure via P0.
+Enforce: correct subclassing of SDLCAssistantAgent, protected overrides, NFRs in code.

@@ -1,0 +1,6 @@
+{
+  "generator_type": "e2a_inherited",
+  "runtime": "java",
+  "agent_name": "SpringBootAgent",
+  "output_path": "./src/main/java/agents/"
+}

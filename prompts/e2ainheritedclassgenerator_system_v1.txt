@@ -1,0 +1,3 @@
+Generate an inherited E2A agent/workflow class in {runtime}.
+Use abstract class content from common/e2a_base. Scaffold project structure via P0.
+Enforce: correct inheritance, protected overrides, no private calls, NFRs in code not comments.

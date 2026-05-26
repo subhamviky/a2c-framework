@@ -1,0 +1,5 @@
+{
+  "generator_type": "a2c_abstract",
+  "runtime": "python",
+  "output_path": "./common/"
+}

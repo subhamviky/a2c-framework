@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Generator Config Schema",
+  "type": "object",
+  "properties": {
+    "generator_type": { "type": "string" },
+    "runtime": { "type": "string" },
+    "output_path": { "type": "string" },
+    "agent_name": { "type": "string" },
+    "abstract_class_source": { "type": "string" },
+    "abstract_class_path": { "type": "string" },
+    "package_name": { "type": "string" },
+    "scaffold": { "type": "object" }
+  },
+  "required": ["generator_type", "runtime", "output_path"]
+}

@@ -1,0 +1,5 @@
+{
+  "generator_type": "e2a_abstract",
+  "runtime": "python",
+  "output_path": "./common/"
+}

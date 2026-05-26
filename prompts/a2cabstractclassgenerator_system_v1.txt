@@ -1,0 +1,3 @@
+Generate the A2C base abstract class file in {runtime}.
+Include SDLCAssistantAgent, DevRequest TypedDict, SDLCWorkflow, CodeCriticAgent.
+Must extend E2A BaseAgent. Enforce mandatory NFRs and governance rules.

@@ -1,0 +1,6 @@
+{
+  "generator_type": "a2c_inherited",
+  "runtime": "python",
+  "agent_name": "PipelineAgent",
+  "output_path": "./agents/"
+}

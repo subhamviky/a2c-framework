@@ -1,0 +1,6 @@
+{
+  "generator_type": "e2a_inherited",
+  "runtime": "python",
+  "agent_name": "RefundAgent",
+  "output_path": "./agents/"
+}

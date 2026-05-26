@@ -1,0 +1,8 @@
+{
+  "generator_type": "e2a_inherited",
+  "runtime": "python",
+  "agent_name": "SettlementOrchestrator",
+  "output_path": "./agents/",
+  "abstract_class_source": "generate",
+  "scaffold": { "dockerfile": true, "makefile": true }
+}
