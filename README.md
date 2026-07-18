@@ -1,5 +1,7 @@
 # A2C: Architecture-to-Code Developer Platform Framework
 
+[![Status: Design Phase](https://img.shields.io/badge/Status-Design_Phase-yellow?style=flat)](https://github.com/subhamviky/a2c-framework)
+
 An AI-governed software factory framework designed to programmatically enforce enterprise-grade architectural discipline, Infrastructure-as-Code (IaC), and secure CI/CD pipelines at generation time.
 
 **Built on top of the [E2A Architecture Framework](https://github.com/subhamviky/e2a-framework)**
@@ -33,12 +35,15 @@ The generator agent is governed by E2A. The output artifact is governed by E2A. 
 ## Multi-Agent SDLC Workflow
 
 DevRequest (input)
-→ RequirementsAgent  — validates project_type, mandatory_nfrs, target_cloud
-→ CodeGenAgent       — generates Clean Architecture microservice code
-→ IaCAgent           — generates Terraform (AWS / GCP / Azure)
-→ CICDAgent          — generates GitHub Actions with OIDC, RAGAS gate, Trivy, rollback
-→ CodeCriticAgent    — validates NFR completeness score >= 0.75
-→ DeliveryState (output) — full project structure + validation report
+
+**RequirementsAgent**  — validates project_type, mandatory_nfrs, target_cloud\
+**CodeGenAgent**       — generates Clean Architecture microservice code\
+**IaCAgent**           — generates Terraform (AWS / GCP / Azure)\
+**CICDAgent**          — generates GitHub Actions with OIDC, RAGAS gate, Trivy, rollback\
+**CodeCriticAgent**    — validates NFR completeness score >= 0.75\
+**DeliveryState (output)** — full project structure + validation report
+
+*(Full multi-agent SDLC pipeline — CodeGenAgent → CodeCriticAgent → IaCGenAgent → PipelineGenAgent — documented in detail as implementation progresses. This framework is currently in active design; P0 and G2C modules are specified but not yet implemented in this repository.)*
 
 ## Built on E2A
 
