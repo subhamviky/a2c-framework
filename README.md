@@ -119,7 +119,9 @@ CodeCriticAgent     ──▶ Deterministically validates AST structure & NFR co
 [ DeliveryState ]   ──▶ (output: full project directory tree + automated audit report)
 ```
 
-*(Full multi-agent SDLC pipeline — `CodeGenAgent` → `CodeCriticAgent` → `IaCAgent` → `CICDAgent` — documented in detail as implementation progresses. This framework is currently in active design; P0 and G2C modules are specified and maintained within this repository family.)*
+*(The full multi-agent SDLC pipeline is specified in [`docs/A2C Framework Reference.pdf`](docs/A2C%20Framework%20Reference.pdf). This framework is currently in active design; P0 and G2C modules are specified and maintained within this repository.)*
+
+Each agent reaches the model through the inherited E2A LLM service (`config['llm_service']`), never a provider SDK. A different model for a specific step — for example a cheaper one for `CodeCriticAgent` — is an explicit per-call argument (`critic.run(state, config, model_id=...)`), not a mutation of shared config.
 
 ---
 
@@ -128,6 +130,7 @@ CodeCriticAgent     ──▶ Deterministically validates AST structure & NFR co
 A2C is a meta-application of the [E2A Architecture Framework](https://github.com/subhamviky/e2a-framework). The same abstract class hierarchy that governs agentic AI systems is used here to build the developer platform that generates those systems.
 
 * **The agent is governed by E2A:** Inherits single entry point execution, non-amplifiable credentials, and token budgets.
+* **The model call is decoupled:** Generator and SDLC agents delegate inference to E2A's vendor-neutral `BaseLLMAgentService` — concurrency, RPM/TPM limits, DLP and typed failure semantics are inherited, and swapping provider is a binding change only.
 * **The generated code follows E2A:** Outputs Clean Architecture microservices with mandatory operational NFRs.
 * **Architecture is enforced structurally:** Applied as a compiler constraint, not a prompt suggestion.
 
@@ -181,7 +184,7 @@ result = workflow.execute(request, config)
 * **Enterprise containerization:** Multi-stage `Dockerfile` (non-root UID 1001, `HEALTHCHECK`), `.dockerignore`
 * **Automation:** `Makefile`, `.github/workflows/` (OIDC, lint, test, security scan)
 
-*See `base_project_bootstrapper.py` and `scaffold-config-schema.json` in this repository.*
+*See [`src/p0/base_project_bootstrapper.py`](src/p0/base_project_bootstrapper.py) and [`schemas/scaffold-config-schema.json`](schemas/scaffold-config-schema.json).*
 
 ---
 
@@ -192,6 +195,9 @@ result = workflow.execute(request, config)
 **The framework stack is self-generating.**
 
 ### Four Generator Classes, One Unified Entry Point:
+
+`E2AAbstractClassGenerator` emits the full E2A abstract set — now nine classes including `BaseLLMAgentService` — so generated agents get `config['llm_service']` delegation by construction. A repository that already holds an older `e2a_base.py` (no `BaseLLMAgentService`) should be treated as stale and regenerated before reuse; see `G2C_Phase_Trigger_Decision_Reference.pdf`.
+
 
 | Generator Class | Output Generated | P0 Scaffold Included? |
 | :--- | :--- | :--- |
@@ -222,7 +228,37 @@ result = workflow.generate({
 
 **Runtime-Agnostic Compilation:** Generator classes are written in Python; generated output is Python, Java 21, Node.js, or Go based on `request['runtime']`. Zero generator code modifications are needed per runtime target.
 
-*See `G2C_Framework_Reference.pdf` in this repository for the full specification.*
+*See [`docs/G2C_Framework_Reference.pdf`](docs/G2C_Framework_Reference.pdf) for the full specification and [`docs/G2C_Phase_Trigger_Decision_Reference.pdf`](docs/G2C_Phase_Trigger_Decision_Reference.pdf) for which phases to run or skip for a given repository state.*
+
+---
+
+## 🗂️ Repository Layout
+
+```
+a2c-framework/
+├── README.md · LICENSE
+├── docs/        A2C, G2C, G2C phase-trigger and P0 reference documents
+├── src/
+│   ├── agents/  sdlc_assistant_agent.py (+ Requirements, CodeGen, IaC, CICD, CodeCritic agents)
+│   ├── p0/      base_project_bootstrapper.py
+│   └── g2c/     generators, factory, workflow, router, critic, typedicts
+├── schemas/     scaffold-config-schema.json, generator-config-schema.json
+├── prompts/     versioned generator system prompts
+└── examples/    scaffold and generator config examples
+```
+
+`e2a_base.py` is intentionally **not** duplicated here: the single source of truth is [`e2a-framework/reference/e2a_base.py`](https://github.com/subhamviky/e2a-framework/blob/main/reference/e2a_base.py). Generated projects import it from the resolved shared-abstractions package.
+
+---
+
+## 📐 Reference Documentation
+
+| Document | Covers |
+| :--- | :--- |
+| [A2C Framework Reference](docs/A2C%20Framework%20Reference.pdf) | Multi-agent SDLC workflow, NFR injection, critic gates |
+| [G2C Framework Reference](docs/G2C_Framework_Reference.pdf) | Generator classes and the unified `generate()` entry point |
+| [G2C Phase Trigger Decision Reference](docs/G2C_Phase_Trigger_Decision_Reference.pdf) | Which of the seven phases run or skip for a given repository state |
+| [P0 Project Bootstrap Reference](docs/P0_ProjectBootstrap_Framework_Reference.pdf) | `bootstrap()`, `scaffold-config.json`, directory trees per runtime |
 
 ---
 
@@ -230,7 +266,7 @@ result = workflow.generate({
 
 A2C operates as a core pillar of the enterprise generative AI and distributed systems ecosystem:
 
-* [**`e2a-framework`**](https://github.com/subhamviky/e2a-framework): The runtime governance substrate providing Template Method lifecycles, MCP execution harnesses, and distributed idempotency locks.
+* [**`e2a-framework`**](https://github.com/subhamviky/e2a-framework): The runtime governance substrate providing Template Method lifecycles, the vendor-neutral `BaseLLMAgentService`, MCP execution harnesses, and distributed idempotency locks.
 * [**`financial-settlement-platform`**](https://github.com/subhamviky/financial-settlement-platform): Java 21 / Spring Boot reference spike validating Saga orchestration, outbox CDC, and double-entry ledger posting.
 * [**`order-to-cash-agentic-ai`**](https://github.com/subhamviky/order-to-cash-agentic-ai): 5-agent LangGraph platform demonstrating bounded context isolation and critic verification on AWS Bedrock.
 
