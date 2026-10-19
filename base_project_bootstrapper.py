@@ -516,17 +516,51 @@ class BaseProjectBootstrapper(ABC):
 
     def __load_prompt_config(self, prompt: str, config: dict) -> ScaffoldRequest:
         """
-        Parse ScaffoldRequest from natural-language prompt via LLM.
-        Routes to configured LLM via config['model_id'] — same as E2A __llm_call.
-        Prompts the model to return ONLY a JSON ScaffoldRequest object.
+        Parse a ScaffoldRequest from a natural-language prompt.
+
+        The model call goes through the E2A inference service bound at
+        config['llm_service'] (a BaseLLMAgentService subclass). P0 holds no
+        provider SDK or credentials; model choice, quota, DLP and latency
+        limits are governed by the service. Override the model for this step
+        with config['model_id'].
+
+        Requires e2a_base.py to be importable. source='json' and
+        source='inline' do not need it.
         """
-        # Implementation: call LLM with a structured extraction prompt,
-        # parse JSON response into ScaffoldRequest TypedDict.
-        # Omitted here — requires E2A BaseAgent or direct SDK integration.
-        raise NotImplementedError(
-            'Prompt resolution requires LLM integration. '
-            'Provide source="json" or source="inline" for non-LLM use.'
-        )
+        service = (config or {}).get('llm_service')
+        if service is None:
+            raise ValueError(
+                "source='prompt' requires config['llm_service'] (a "
+                "BaseLLMAgentService subclass). Provide it, or use "
+                "source='json' or source='inline'.")
+
+        from e2a_base import _run_on_bridge_loop   # lazy: non-LLM sources need no E2A import
+
+        messages = [
+            {'role': 'system', 'priority': 0, 'content':
+                'Return ONLY one JSON object matching the ScaffoldRequest '
+                'schema. No prose, no code fences. Use only these keys: '
+                + ', '.join(ScaffoldRequest.__annotations__)},
+            {'role': 'user', 'content': prompt},
+        ]
+        result = _run_on_bridge_loop(service.process_inference(
+            messages,
+            config=config,
+            model_id=(config or {}).get('model_id'),
+            tenant_id=(config or {}).get('tenant_id', 'p0'),
+            response_schema=ScaffoldRequest,
+        ))
+        if result.get('status') == 'FAILED':
+            raise RuntimeError(f"Prompt resolution failed: {result.get('error')}")
+
+        parsed = result.get('structured_output') or {}
+        if 'parse_error' in parsed:
+            raise ValueError(f"Model did not return valid JSON: {parsed['raw']!r}")
+
+        unknown = set(parsed) - set(ScaffoldRequest.__annotations__)
+        if unknown:
+            raise ValueError(f'Unknown ScaffoldRequest fields from model: {sorted(unknown)}')
+        return parsed
 
     def __write_file(self, project_root: str, relative_path: str, content: str) -> str:
         """Write content to file.  Creates parent dirs.  Returns absolute path."""
