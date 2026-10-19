@@ -119,7 +119,7 @@ CodeCriticAgent     ──▶ Deterministically validates AST structure & NFR co
 [ DeliveryState ]   ──▶ (output: full project directory tree + automated audit report)
 ```
 
-*(The full multi-agent SDLC pipeline is specified in [`docs/A2C_Framework_Reference.docx`](docs/A2C_Framework_Reference.docx). This framework is currently in active design; P0 and G2C modules are specified and maintained within this repository.)*
+*(The full multi-agent SDLC pipeline is specified in [`docs/A2C_Framework_Reference.docx`](docs/A2C_Framework_Reference.docx). This framework is currently in active design. The implemented code in this repository is the P0 bootstrapper and the G2C generator classes; the A2C SDLC agents shown above are specified in the Reference document.)*
 
 Each agent reaches the model through the inherited E2A LLM service (`config['llm_service']`), never a provider SDK. A different model for a specific step — for example a cheaper one for `CodeCriticAgent` — is an explicit per-call argument (`critic.run(state, config, model_id=...)`), not a mutation of shared config.
 
@@ -196,7 +196,7 @@ result = workflow.execute(request, config)
 
 ### Four Generator Classes, One Unified Entry Point:
 
-`E2AAbstractClassGenerator` emits the full E2A abstract set — now nine classes including `BaseLLMAgentService` — so generated agents get `config['llm_service']` delegation by construction. A repository that already holds an older `e2a_base.py` (no `BaseLLMAgentService`) should be treated as stale and regenerated before reuse; see `G2C_Phase_Trigger_Decision_Reference.pdf`.
+`E2AAbstractClassGenerator` emits the full E2A abstract set — now nine classes including `BaseLLMAgentService` — so generated agents get `config['llm_service']` delegation by construction. A repository that already holds an older `e2a_base.py` (no `BaseLLMAgentService`) should be treated as stale and regenerated before reuse; see [`docs/G2C_Phase_Trigger_Decision_Reference.docx`](docs/G2C_Phase_Trigger_Decision_Reference.docx).
 
 
 | Generator Class | Output Generated | P0 Scaffold Included? |
@@ -237,13 +237,16 @@ result = workflow.generate({
 ```
 a2c-framework/
 ├── README.md · LICENSE
-├── docs/        A2C, G2C, G2C phase-trigger and P0 reference documents
-├── src/
-│   ├── p0/      base_project_bootstrapper.py
-│   └── g2c/     generators, factory, workflow, router, critic, typedicts
-├── schemas/     scaffold-config-schema.json, generator-config-schema.json
-├── prompts/     versioned generator system prompts
-└── examples/    scaffold and generator config examples
+├── docs/                          A2C, G2C, G2C phase-trigger and P0 reference documents (.docx)
+├── base_project_bootstrapper.py   P0 — project bootstrap
+├── a2c_abstract_class_generator.py · a2c_inherited_class_generator.py
+├── e2a_abstract_class_generator.py · e2a_inherited_class_generator.py
+├── base_generator_agent.py · generator_critic_agent.py · generator_factory.py
+├── developer_platform_workflow.py · generator_api_router.py · typedicts.py      G2C
+├── scaffold-config-schema.json
+├── schemas/                       generator-config-schema.json
+├── prompts/                       versioned generator system prompts
+└── examples/                      scaffold and generator config examples
 ```
 
 `e2a_base.py` is intentionally **not** duplicated here: the single source of truth is [`e2a-framework/reference/e2a_base.py`](https://github.com/subhamviky/e2a-framework/blob/main/reference/e2a_base.py). Generated projects import it from the resolved shared-abstractions package.
