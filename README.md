@@ -179,7 +179,7 @@ result = workflow.execute(request, config)
 
 * **Build and package definitions:** `pyproject.toml` / `pom.xml` / `go.mod`
 * **Full directory tree structure:** Strict adherence to Clean Architecture layers (domain, application, infrastructure, interfaces)
-* **Core environment configurations:** `.gitignore`, `.env.example`, `application.yml`
+* **Core environment configurations:** `.gitignore`, `.env.example` (generated from the central `E2A_CONFIG` registry, so generated projects share one configuration model), `application.yml`
 * **Project governance:** `README.md`, `LICENSE`
 * **Enterprise containerization:** Multi-stage `Dockerfile` (non-root UID 1001, `HEALTHCHECK`), `.dockerignore`
 * **Automation:** `Makefile`, `.github/workflows/` (OIDC, lint, test, security scan)
