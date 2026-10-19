@@ -119,7 +119,7 @@ CodeCriticAgent     ──▶ Deterministically validates AST structure & NFR co
 [ DeliveryState ]   ──▶ (output: full project directory tree + automated audit report)
 ```
 
-*(The full multi-agent SDLC pipeline is specified in [`docs/A2C Framework Reference.pdf`](docs/A2C%20Framework%20Reference.pdf). This framework is currently in active design; P0 and G2C modules are specified and maintained within this repository.)*
+*(The full multi-agent SDLC pipeline is specified in [`docs/A2C_Framework_Reference.docx`](docs/A2C_Framework_Reference.docx). This framework is currently in active design; P0 and G2C modules are specified and maintained within this repository.)*
 
 Each agent reaches the model through the inherited E2A LLM service (`config['llm_service']`), never a provider SDK. A different model for a specific step — for example a cheaper one for `CodeCriticAgent` — is an explicit per-call argument (`critic.run(state, config, model_id=...)`), not a mutation of shared config.
 
@@ -184,7 +184,7 @@ result = workflow.execute(request, config)
 * **Enterprise containerization:** Multi-stage `Dockerfile` (non-root UID 1001, `HEALTHCHECK`), `.dockerignore`
 * **Automation:** `Makefile`, `.github/workflows/` (OIDC, lint, test, security scan)
 
-*See [`src/p0/base_project_bootstrapper.py`](src/p0/base_project_bootstrapper.py) and [`schemas/scaffold-config-schema.json`](schemas/scaffold-config-schema.json).*
+*See [`base_project_bootstrapper.py`](base_project_bootstrapper.py) and [`scaffold-config-schema.json`](scaffold-config-schema.json).*
 
 ---
 
@@ -228,7 +228,7 @@ result = workflow.generate({
 
 **Runtime-Agnostic Compilation:** Generator classes are written in Python; generated output is Python, Java 21, Node.js, or Go based on `request['runtime']`. Zero generator code modifications are needed per runtime target.
 
-*See [`docs/G2C_Framework_Reference.pdf`](docs/G2C_Framework_Reference.pdf) for the full specification and [`docs/G2C_Phase_Trigger_Decision_Reference.pdf`](docs/G2C_Phase_Trigger_Decision_Reference.pdf) for which phases to run or skip for a given repository state.*
+*See [`docs/G2C_Framework_Reference.docx`](docs/G2C_Framework_Reference.docx) for the full specification and [`docs/G2C_Phase_Trigger_Decision_Reference.docx`](docs/G2C_Phase_Trigger_Decision_Reference.docx) for which phases to run or skip for a given repository state.*
 
 ---
 
@@ -239,7 +239,6 @@ a2c-framework/
 ├── README.md · LICENSE
 ├── docs/        A2C, G2C, G2C phase-trigger and P0 reference documents
 ├── src/
-│   ├── agents/  sdlc_assistant_agent.py (+ Requirements, CodeGen, IaC, CICD, CodeCritic agents)
 │   ├── p0/      base_project_bootstrapper.py
 │   └── g2c/     generators, factory, workflow, router, critic, typedicts
 ├── schemas/     scaffold-config-schema.json, generator-config-schema.json
@@ -255,10 +254,10 @@ a2c-framework/
 
 | Document | Covers |
 | :--- | :--- |
-| [A2C Framework Reference](docs/A2C%20Framework%20Reference.pdf) | Multi-agent SDLC workflow, NFR injection, critic gates |
-| [G2C Framework Reference](docs/G2C_Framework_Reference.pdf) | Generator classes and the unified `generate()` entry point |
-| [G2C Phase Trigger Decision Reference](docs/G2C_Phase_Trigger_Decision_Reference.pdf) | Which of the seven phases run or skip for a given repository state |
-| [P0 Project Bootstrap Reference](docs/P0_ProjectBootstrap_Framework_Reference.pdf) | `bootstrap()`, `scaffold-config.json`, directory trees per runtime |
+| [A2C Framework Reference](docs/A2C_Framework_Reference.docx) | Multi-agent SDLC workflow, NFR injection, critic gates |
+| [G2C Framework Reference](docs/G2C_Framework_Reference.docx) | Generator classes and the unified `generate()` entry point |
+| [G2C Phase Trigger Decision Reference](docs/G2C_Phase_Trigger_Decision_Reference.docx) | Which of the seven phases run or skip for a given repository state |
+| [P0 Project Bootstrap Reference](docs/P0_ProjectBootstrap_Framework_Reference.docx) | `bootstrap()`, `scaffold-config.json`, directory trees per runtime |
 
 ---
 
