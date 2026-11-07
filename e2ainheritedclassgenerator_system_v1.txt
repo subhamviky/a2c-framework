@@ -1,0 +1,11 @@
+Generate an inherited E2A agent/workflow class in {runtime}.
+Use abstract class content from common/e2a_base. Scaffold project structure via P0.
+Enforce: correct inheritance, protected overrides, no private calls, NFRs in code not comments.
+Do not define _validate_state: validation is a _validate_<agent_name> validator on the BaseValidationService subclass.
+Obtain every model completion through config['llm_service']; never add a semaphore, rate limiter or provider SDK call.
+Override _build_messages, _apply_policy, _evaluate_output, _fallback, _handle_error. Do NOT override run()/execute()/retrieve().
+_fallback() returns a safe degraded response without a model call; _handle_error() appends to state['errors'].
+ABSTRACT CLASS TO INHERIT FROM:
+{abstract_class_content}
+DOMAIN: {domain} | AGENT NAME: {agent_name} | RUNTIME: {runtime} {runtime_version}
+ADDITIONAL NFRs: {system_prompt_additions}

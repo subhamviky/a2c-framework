@@ -7,3 +7,9 @@ Bound any parallel branch fan-out with a setting. generation_key is a business k
 Tool writes use an idempotency key of project and path, and are conditional on the version read where two requests can write the same path.
 A request deadline caps each agent's wait and model call; a cancelled workflow stops at the next step boundary.
 Do not generate _validate_state on any agent: input validation belongs to BaseValidationService.
+Runtime patterns: {runtime_patterns}
+Include MANDATORY_NFRS (Idempotency, Observability, CircuitBreaker, RetryWithBackoff, HealthCheck, GracefulShutdown),
+injected by SDLCAssistantAgent._apply_policy() before any model call, and the approved-cloud check.
+E2A BASE TO EXTEND:
+{abstract_class_content}
+ADDITIONAL NFRs: {system_prompt_additions}

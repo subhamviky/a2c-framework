@@ -4,5 +4,5 @@
   "agent_name": "SettlementOrchestrator",
   "output_path": "./agents/",
   "abstract_class_source": "generate",
-  "scaffold": { "dockerfile": true, "makefile": true }
+  "scaffold": { "project_name": "SettlementEngine", "package_name": "settlement_engine", "include_docker": true, "include_makefile": true }
 }

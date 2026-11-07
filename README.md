@@ -113,13 +113,13 @@ IaCAgent            ──▶ Generates modular Terraform (VPC, private subnets,
 CICDAgent           ──▶ Generates GitHub Actions with OIDC, Trivy, RAGAS gate, and auto-rollback
       │
       ▼
-CodeCriticAgent     ──▶ Deterministically validates AST structure & NFR completeness score >= 0.75
+CodeCriticAgent     ──▶ Model review AND a deterministic NFR-pattern check (comments ignored); the lower score must be >= 0.75
       │
       ▼
-[ DeliveryState ]   ──▶ (output: full project directory tree + automated audit report)
+[ DevRequest ]      ──▶ (output: generated_* fields, critic_report, artifacts written into the P0 workspace)
 ```
 
-*(The full multi-agent SDLC pipeline is specified in [`docs/A2C Framework Reference.pdf`](docs/A2C%20Framework%20Reference.pdf). This framework is currently in active design. The implemented code in this repository is the P0 bootstrapper and the G2C generator classes; the A2C SDLC agents shown above are specified in the Reference document.)*
+The agents are implemented in [`a2c_base.py`](a2c_base.py) on top of E2A's `BaseAgent`, `BaseWorkflow`, `BaseToolService` and `BaseValidationService`; `SDLCWorkflow.execute(dev_request, config)` is the entry point. By default the agents run in the NFR-first order of the Reference (Requirements → IaC → CodeGen: observability → CI/CD → CodeGen: NFR module → CodeGen: business logic → Critic); `config['a2c_sequence'] = 'topology'` runs the five agents once each in the order above. A DevRequest is validated by `DevPlatformValidationService` before the workflow starts, and artifacts are written only after the critic passes, each write conditional on the version read at the start of the run.
 
 Each agent reaches the model through the inherited E2A LLM service (`config['llm_service']`), never a provider SDK. A different model for a specific step — for example a cheaper one for `CodeCriticAgent` — is an explicit per-call argument (`critic.run(state, config, model_id=...)`), not a mutation of shared config.
 
@@ -131,7 +131,7 @@ A2C is a meta-application of the [E2A Architecture Framework](https://github.com
 
 * **The agent is governed by E2A:** Inherits single entry point execution, non-amplifiable credentials, and token budgets.
 * **The model call is decoupled:** Generator and SDLC agents delegate inference to E2A's vendor-neutral `BaseLLMAgentService` — concurrency, RPM/TPM limits, DLP and typed failure semantics are inherited, and swapping provider is a binding change only.
-* **Concurrent generation is bounded:** with a configured idempotency store, `generate()` and `bootstrap()` take an atomic claim per key (one owner, typed `replay` / `in_progress` / `conflict` / `recovery_required` outcomes), settle it on every exit path, and send every model call through `config['llm_service']`. Shared abstract classes carry a compare-and-set ownership record, so saga compensation never deletes one it did not create. See `a2c_concurrency.py` and `smoke_test_generator_concurrency.py`. These run against in-memory test doubles; they have not been validated against a live store, a live inference gateway or production load.
+* **Concurrent generation is bounded:** with a configured idempotency store, `generate()` and `bootstrap()` take an atomic claim per key (one owner, typed `replay` / `in_progress` / `conflict` / `recovery_required` outcomes), settle it on every exit path, and send every model call through `config['llm_service']`. Shared abstract classes carry a compare-and-set ownership record, so saga compensation never deletes one it did not create. See `a2c_concurrency.py` and the smoke tests below. These run against in-memory test doubles; they have not been validated against a live store, a live inference gateway or production load.
 * **The generated code follows E2A:** Outputs Clean Architecture microservices with mandatory operational NFRs.
 * **Architecture is enforced structurally:** Applied as a compiler constraint, not a prompt suggestion.
 
@@ -220,11 +220,12 @@ result = workflow.generate({
     'output_path':    './'
 }, config)
 
-# G2C automatically compiles:
-# 1. Declarative OpenAPI/OData specs into Pydantic models
-# 2. P0 scaffold workspace directory tree
-# 3. Sealed SettlementAgent class extending BaseAgent
-# Validates via GeneratorCriticAgent (score >= 0.75) before writing any file to disk.
+# One call:
+# 1. E2A base abstract class generated (abstract_class_source defaults to 'generate')
+# 2. P0 scaffold, when request['scaffold'] is given (inline, inside the generator)
+# 3. SettlementAgent class extending BaseAgent, written into the scaffold
+# Every output passes GeneratorCriticAgent (score >= 0.75) before any file is written.
+# Without config['llm_service'] the generators run in template mode (deterministic skeletons).
 ```
 
 **Runtime-Agnostic Compilation:** Generator classes are written in Python; generated output is Python, Java 21, Node.js, or Go based on `request['runtime']`. Zero generator code modifications are needed per runtime target.
@@ -239,18 +240,35 @@ result = workflow.generate({
 a2c-framework/
 ├── README.md · LICENSE
 ├── docs/                          A2C, G2C, G2C phase-trigger and P0 reference documents (.pdf)
-├── base_project_bootstrapper.py   P0 — project bootstrap
-├── a2c_abstract_class_generator.py · a2c_inherited_class_generator.py
+├── a2c_base.py                    A2C — DevRequest, SDLCAssistantAgent and specialists,
+│                                  CodeCriticAgent, SDLCWorkflow, validation service, tools
+├── base_project_bootstrapper.py   P0 — project bootstrap, BootstrapAndGenerateWorkflow
+├── base_generator_agent.py · inherited_generator.py · generator_templates.py
 ├── e2a_abstract_class_generator.py · e2a_inherited_class_generator.py
-├── base_generator_agent.py · generator_critic_agent.py · generator_factory.py
-├── a2c_concurrency.py             claim store, shared-artifact ownership, deadlines
-├── smoke_test_generator_concurrency.py    concurrency smoke tests (in-memory test doubles)
+├── a2c_abstract_class_generator.py · a2c_inherited_class_generator.py
+├── generator_critic_agent.py · generator_factory.py
 ├── developer_platform_workflow.py · generator_api_router.py · typedicts.py      G2C
+├── a2c_concurrency.py             claim store, shared-artifact ownership, deadlines
+├── smoke_test_generator_concurrency.py    G2C/P0 concurrency (in-memory test doubles)
+├── smoke_test_g2c_contract.py     G2C method contract: files, critic, chain, P0 inline, API
+├── smoke_test_a2c.py              A2C workflow, critic, conditional writes, P0 -> A2C
+├── smoke_test_aidlc_integration.py   E2A AI-DLC build over the real G2C, P0 and A2C
 ├── scaffold-config-schema.json
 ├── schemas/                       generator-config-schema.json
 ├── prompts/                       versioned generator system prompts
 └── examples/                      scaffold and generator config examples
 ```
+
+Run the tests (the A2C and AI-DLC ones need `e2a-framework/reference` checked out next to this repository, or `E2A_REFERENCE_PATH` set; the router checks need `fastapi` and `httpx`):
+
+```bash
+python smoke_test_generator_concurrency.py
+python smoke_test_g2c_contract.py
+python smoke_test_a2c.py
+python smoke_test_aidlc_integration.py
+```
+
+All of them use in-memory test doubles; nothing has been validated against a live store, a live inference gateway or production load.
 
 `e2a_base.py` is intentionally **not** duplicated here: the single source of truth is [`e2a-framework/reference/e2a_base.py`](https://github.com/subhamviky/e2a-framework/blob/main/reference/e2a_base.py). Generated projects import it from the resolved shared-abstractions package.
 

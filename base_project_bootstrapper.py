@@ -20,7 +20,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from a2c_concurrency import ClaimGuard, fingerprint_of, status_of
+from a2c_concurrency import ClaimGuard, fingerprint_of, run_coro_sync, status_of
 
 logging.basicConfig(level=logging.INFO)
 
@@ -43,6 +43,8 @@ class ScaffoldRequest(TypedDict, total=False):
     source: str           # 'json' | 'prompt' | 'inline'  (default: 'inline')
     config_path: str      # path to scaffold-config.json   (required if source='json')
     prompt: str           # free-text description           (required if source='prompt')
+    resolved_from: str    # written on resolution: 'json' | 'prompt' (source becomes 'inline')
+    tenant_id: str        # scopes the idempotency claim; copied into dev_request
 
     # ── Runtime ─────────────────────────────────────────────────────────────
     runtime: str          # 'python' | 'java' | 'node' | 'go'
@@ -109,6 +111,77 @@ class ScaffoldResult(TypedDict, total=False):
     status:               str         # scaffolded | replay | in_progress | conflict |
                                       # recovery_required | failed_final
     replayed:             bool        # True when a stored result is returned
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  Request resolution (shared by bootstrap() Step 1 and the factory)       ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+def _load_json_scaffold(config_path: str) -> dict:
+    """Read scaffold-config.json; the 'scaffold' section (or the whole file)."""
+    with open(config_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    return dict(data.get('scaffold', data))
+
+
+def _load_prompt_scaffold(prompt: str, config: dict) -> dict:
+    """
+    Parse a ScaffoldRequest from a natural-language prompt. The model call goes
+    through the E2A inference service bound at config['llm_service'] (a
+    BaseLLMAgentService); P0 holds no provider SDK or credentials. Override the
+    model for this step with config['model_id'].
+    """
+    config = config or {}
+    service = config.get('llm_service')
+    if service is None:
+        raise ValueError(
+            "source='prompt' requires config['llm_service'] (a BaseLLMAgentService "
+            "subclass). Provide it, or use source='json' or source='inline'.")
+    messages = [
+        {'role': 'system', 'priority': 0, 'content':
+            'Return ONLY one JSON object matching the ScaffoldRequest schema. No prose, '
+            'no code fences. Use only these keys: ' + ', '.join(ScaffoldRequest.__annotations__)},
+        {'role': 'user', 'content': prompt},
+    ]
+    result = run_coro_sync(service.process_inference(
+        messages, config=config, model_id=config.get('model_id'),
+        tenant_id=config.get('tenant_id', 'p0'), response_schema=ScaffoldRequest))
+    if result.get('status') == 'FAILED':
+        raise RuntimeError(f"Prompt resolution failed: {result.get('error')}")
+    parsed = result.get('structured_output')
+    if parsed is None and result.get('text'):
+        try:
+            parsed = json.loads(result['text'])
+        except json.JSONDecodeError:
+            parsed = {'parse_error': True, 'raw': result['text']}
+    parsed = parsed or {}
+    if 'parse_error' in parsed:
+        raise ValueError(f"Model did not return valid JSON: {parsed.get('raw')!r}")
+    unknown = set(parsed) - set(ScaffoldRequest.__annotations__)
+    if unknown:
+        raise ValueError(f'Unknown ScaffoldRequest fields from model: {sorted(unknown)}')
+    return dict(parsed)
+
+
+def resolve_scaffold_request(request: dict, config: dict = None) -> dict:
+    """
+    Resolve source='json' | 'prompt' into an inline ScaffoldRequest.
+    Priority: inline fields > loaded fields. Returns a new dict with
+    source='inline' and resolved_from set; inline requests are returned as a copy.
+    """
+    request = dict(request or {})
+    src = request.get('source', 'inline')
+    if src == 'json':
+        loaded = _load_json_scaffold(request['config_path'])
+    elif src == 'prompt':
+        loaded = _load_prompt_scaffold(request['prompt'], config or {})
+    else:
+        return request
+    inline = {k: v for k, v in request.items() if k not in ('source', 'config_path', 'prompt')}
+    merged = {**loaded, **inline}
+    merged.pop('source', None)
+    merged.update(source='inline', resolved_from=src)
+    return merged
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -208,6 +281,7 @@ class BaseProjectBootstrapper(ABC):
           16 Observability log   structured JSON: bootstrapper, key, latency, file count
         """
         config  = config or self.config or {}
+        request = dict(request or {})          # never mutate the caller's request
         trace_id = str(uuid.uuid4())
         start    = time.time()
         result: ScaffoldResult = {
@@ -227,8 +301,9 @@ class BaseProjectBootstrapper(ABC):
             # Step 2 — validate
             if not self._validate_request(request, config, **kwargs):
                 raise ValueError(
-                    f'[{self.bootstrapper_name}] Validation failed — '
-                    'check runtime, platform, build_tool, project_name'
+                    f'[{self.bootstrapper_name}] Validation failed — check required '
+                    'fields (runtime, platform, build_tool, project_name and the '
+                    "runtime-specific ones); the log names what is missing"
                 )
 
             # Step 3 — idempotency. With a store configured the ATOMIC CLAIM is the
@@ -238,7 +313,10 @@ class BaseProjectBootstrapper(ABC):
             request['scaffold_key'] = key
             store = (config.get('scaffold_idempotency_store')
                      or config.get('idempotency_store'))
-            claim_key = key if self.idempotency else f'{key}#rescaffold'
+            # Claims are namespaced per framework ('p0:'), so a composing caller
+            # that claims a similarly shaped key in the same store (AI-DLC's
+            # project:runtime:build_tool:platform) never collides with P0.
+            claim_key = f'p0:{key}' if self.idempotency else f'p0:{key}#rescaffold'
             guard = ClaimGuard(store, claim_key,
                                request.get('tenant_id') or config.get('tenant_id'),
                                fingerprint_of(request), config,
@@ -246,10 +324,18 @@ class BaseProjectBootstrapper(ABC):
             claim = guard.acquire()
             if not guard.owned:
                 return self.__not_owner(claim, key, result)
-            if self.idempotency and self.__is_already_scaffolded(key, config):
+            if self.idempotency and self.__is_already_scaffolded(request, config):
+                # Fast path: the target directory (resolved exactly as Step 5 would
+                # resolve it) already holds a project. Return enough for the caller to
+                # continue: the project root and, when enabled, the A2C hand-off.
                 logging.info(f'[{self.bootstrapper_name}] Skip — already scaffolded: {key}')
+                root = self.__project_dir(request, config)
                 result.update({'success': True, 'scaffold_key': key, 'status': 'replay',
-                               'replayed': True})
+                               'replayed': True, 'project_root': str(root.resolve())})
+                a2c_cfg = config.get('a2c', {})
+                if a2c_cfg.get('enabled', False):
+                    result['dev_request'] = self.__build_dev_request(
+                        request, a2c_cfg, config, str(root.resolve()))
                 guard.succeed(dict(result))
                 return result
 
@@ -260,6 +346,7 @@ class BaseProjectBootstrapper(ABC):
             # can leave a partial scaffold)
             writing_started = True
             root = self.__resolve_output_path(request, config)
+            before = self.__snapshot(root)
             self._scaffold_structure(request, config, root, **kwargs)
             result['project_root'] = root
 
@@ -275,9 +362,10 @@ class BaseProjectBootstrapper(ABC):
                 p = self.__write_file(root, self._dependency_file_name(request), dep)
                 result['scaffolded_files'].append(p)
 
-            # Step 8 — git config
-            for fname, content in self._generate_git_config(request, config, **kwargs).items():
-                result['scaffolded_files'].append(self.__write_file(root, fname, content))
+            # Step 8 — git config (skipped when git_init is False)
+            if request.get('git_init', True):
+                for fname, content in self._generate_git_config(request, config, **kwargs).items():
+                    result['scaffolded_files'].append(self.__write_file(root, fname, content))
 
             # Step 9 — env templates
             for fname, content in self._generate_env_templates(request, config, **kwargs).items():
@@ -308,6 +396,12 @@ class BaseProjectBootstrapper(ABC):
                 mk = self._generate_makefile(request, config, **kwargs)
                 if mk:
                     result['scaffolded_files'].append(self.__write_file(root, 'Makefile', mk))
+
+            # Record files created outside __write_file (package markers etc. made by
+            # _scaffold_structure) so scaffolded_files describes the whole workspace.
+            listed = set(result['scaffolded_files'])
+            result['scaffolded_files'] += sorted(
+                f for f in self.__snapshot(root) - before if f not in listed)
 
             # Step 14 — validate output
             if not self._validate_output(result, config, **kwargs):
@@ -341,7 +435,7 @@ class BaseProjectBootstrapper(ABC):
             # A2C handoff
             a2c_cfg = config.get('a2c', {})
             if a2c_cfg.get('enabled', False):
-                result['dev_request'] = self.__build_dev_request(request, a2c_cfg)
+                result['dev_request'] = self.__build_dev_request(request, a2c_cfg, config, root)
 
             # Settle succeeded. The stored result includes dev_request, so a replay
             # feeds the same hand-off into the A2C phase. A deliberate re-scaffold
@@ -388,15 +482,16 @@ class BaseProjectBootstrapper(ABC):
         """
         pass
 
-    @abstractmethod
     def _resolve_config(self, request, config=None, **kwargs) -> ScaffoldRequest:
         """
-        Load ScaffoldRequest from external source.
-          source='json':   call self.__load_json_config(request['config_path'])
-          source='prompt': call self.__load_prompt_config(request['prompt'], config)
-        Returns fully-populated ScaffoldRequest.
+        Load ScaffoldRequest from an external source (default implementation).
+          source='json':   scaffold-config.json ['scaffold'] section
+          source='prompt': natural-language prompt via config['llm_service']
+        Inline fields keep priority over loaded ones (priority 1 = inline).
+        The result has source='inline' and resolved_from='json'|'prompt', so a
+        request is never resolved twice. Override only to add a source.
         """
-        pass
+        return resolve_scaffold_request(request, config)
 
     @abstractmethod
     def _plan_scaffold(self, request, config=None, **kwargs) -> List[dict]:
@@ -554,59 +649,11 @@ class BaseProjectBootstrapper(ABC):
 
     def __load_json_config(self, config_path: str) -> ScaffoldRequest:
         """Load ScaffoldRequest from scaffold-config.json['scaffold'] key."""
-        with open(config_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        scaffold = data.get('scaffold', data)
-        scaffold['source'] = 'json'
-        return scaffold
+        return _load_json_scaffold(config_path)
 
     def __load_prompt_config(self, prompt: str, config: dict) -> ScaffoldRequest:
-        """
-        Parse a ScaffoldRequest from a natural-language prompt.
-
-        The model call goes through the E2A inference service bound at
-        config['llm_service'] (a BaseLLMAgentService subclass). P0 holds no
-        provider SDK or credentials; model choice, quota, DLP and latency
-        limits are governed by the service. Override the model for this step
-        with config['model_id'].
-
-        Requires e2a_base.py to be importable. source='json' and
-        source='inline' do not need it.
-        """
-        service = (config or {}).get('llm_service')
-        if service is None:
-            raise ValueError(
-                "source='prompt' requires config['llm_service'] (a "
-                "BaseLLMAgentService subclass). Provide it, or use "
-                "source='json' or source='inline'.")
-
-        from e2a_base import _run_on_bridge_loop   # lazy: non-LLM sources need no E2A import
-
-        messages = [
-            {'role': 'system', 'priority': 0, 'content':
-                'Return ONLY one JSON object matching the ScaffoldRequest '
-                'schema. No prose, no code fences. Use only these keys: '
-                + ', '.join(ScaffoldRequest.__annotations__)},
-            {'role': 'user', 'content': prompt},
-        ]
-        result = _run_on_bridge_loop(service.process_inference(
-            messages,
-            config=config,
-            model_id=(config or {}).get('model_id'),
-            tenant_id=(config or {}).get('tenant_id', 'p0'),
-            response_schema=ScaffoldRequest,
-        ))
-        if result.get('status') == 'FAILED':
-            raise RuntimeError(f"Prompt resolution failed: {result.get('error')}")
-
-        parsed = result.get('structured_output') or {}
-        if 'parse_error' in parsed:
-            raise ValueError(f"Model did not return valid JSON: {parsed['raw']!r}")
-
-        unknown = set(parsed) - set(ScaffoldRequest.__annotations__)
-        if unknown:
-            raise ValueError(f'Unknown ScaffoldRequest fields from model: {sorted(unknown)}')
-        return parsed
+        """Parse a ScaffoldRequest from a prompt through config['llm_service']."""
+        return _load_prompt_scaffold(prompt, config)
 
     def __write_file(self, project_root: str, relative_path: str, content: str) -> str:
         """Write content to file.  Creates parent dirs.  Returns absolute path."""
@@ -637,6 +684,14 @@ class BaseProjectBootstrapper(ABC):
         st = status_of(claim)
         if st == 'REPLAY':
             stored = dict(claim.result or {})
+            root = stored.get('project_root')
+            if root and not (Path(root).is_dir() and any(Path(root).iterdir())):
+                # The settled workspace was removed (e.g. by a saga). Replaying
+                # its path would hand callers a project that does not exist.
+                result.update({'success': False, 'scaffold_key': key, 'status': 'recovery_required'})
+                result['errors'].append(f'replayed scaffold is missing at {root}; reconcile the '
+                                        'claim before re-scaffolding')
+                return result
             stored.update(status='replay', replayed=True)
             return stored          # nothing is written
         why = {
@@ -650,15 +705,29 @@ class BaseProjectBootstrapper(ABC):
         result['errors'].append(why)
         return result
 
-    def __is_already_scaffolded(self, key: str, config: dict) -> bool:
+    def __output_base(self, request: ScaffoldRequest, config: dict) -> str:
+        """request['output_path'] > config['output_path'] > env BOOTSTRAP_OUTPUT_PATH > './'.
+        Single resolution rule shared by the idempotency check and Step 5."""
+        return (request.get('output_path') or config.get('output_path')
+                or os.getenv('BOOTSTRAP_OUTPUT_PATH', './'))
+
+    def __project_dir(self, request: ScaffoldRequest, config: dict) -> Path:
+        return Path(self.__output_base(request, config)) / request.get('project_name', 'project')
+
+    def __is_already_scaffolded(self, request: ScaffoldRequest, config: dict) -> bool:
         """
-        True if project directory already exists and is non-empty.
-        Override config['scaffold_idempotency_store'] for external store (DynamoDB, Redis).
+        Fast-path check: the project directory that Step 5 would use exists and is
+        non-empty. Under concurrent callers the atomic claim (Step 3) is the
+        authority; this check is consulted only after the claim is won.
         """
-        base = config.get('output_path', os.getenv('BOOTSTRAP_OUTPUT_PATH', './'))
-        project_name = key.split(':')[0]
-        d = Path(base) / project_name
+        d = self.__project_dir(request, config)
         return d.exists() and any(d.iterdir())
+
+    @staticmethod
+    def __snapshot(root: str) -> set:
+        """Absolute paths of all files under root (empty if root is missing)."""
+        r = Path(root)
+        return {str(p.resolve()) for p in r.rglob('*') if p.is_file()} if r.exists() else set()
 
     def __resolve_output_path(self, request: ScaffoldRequest, config: dict) -> str:
         """
@@ -666,12 +735,7 @@ class BaseProjectBootstrapper(ABC):
         Order: request['output_path'] > config['output_path'] >
                env BOOTSTRAP_OUTPUT_PATH > './'
         """
-        base = (
-            request.get('output_path')
-            or config.get('output_path')
-            or os.getenv('BOOTSTRAP_OUTPUT_PATH', './')
-        )
-        root = str((Path(base) / request.get('project_name', 'project')).resolve())
+        root = str(self.__project_dir(request, config).resolve())
         Path(root).mkdir(parents=True, exist_ok=True)
         return root
 
@@ -681,20 +745,30 @@ class BaseProjectBootstrapper(ABC):
         filename = self.MANIFEST_FILENAMES.get(key, 'build.config')
         return self.__write_file(project_root, filename, content)
 
-    def __build_dev_request(self, request: ScaffoldRequest, a2c_cfg: dict) -> dict:
+    def __build_dev_request(self, request: ScaffoldRequest, a2c_cfg: dict,
+                            config: dict = None, project_root: str = None) -> dict:
         """
         Build A2C DevRequest from ScaffoldRequest + config['a2c'] section.
-        Populates project_name, language, target_cloud automatically.
-        Called at Step 16 when config['a2c']['enabled'] is True.
+        Populates project_name, language, target_cloud, tenant_id and
+        project_root automatically, so A2C's SDLCWorkflow can claim the request
+        per tenant and write its artifacts into this workspace.
+        Called at Step 16 (and on the idempotent skip) when config['a2c']['enabled'].
         """
-        return {
+        config = config or {}
+        dev = {
             'project_name':   request.get('project_name'),
-            'project_type':   a2c_cfg.get('project_type', ''),
-            'mandatory_nfrs': a2c_cfg.get('mandatory_nfrs', []),
+            'project_type':   a2c_cfg.get('project_type') or request.get('project_type', ''),
+            'mandatory_nfrs': list(a2c_cfg.get('mandatory_nfrs', [])),
             'target_cloud':   request.get('platform', a2c_cfg.get('target_cloud', 'aws')),
             'language':       request.get('runtime', 'python'),
             'context':        a2c_cfg.get('context', ''),
         }
+        tenant = request.get('tenant_id') or config.get('tenant_id')
+        if tenant:
+            dev['tenant_id'] = tenant
+        if project_root:
+            dev['project_root'] = project_root
+        return dev
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -720,13 +794,10 @@ class PythonPoetryBootstrapper(BaseProjectBootstrapper):
         if request['platform'] not in self.APPROVED_PLATFORMS:
             logging.error(f'[{self.bootstrapper_name}] Platform not approved: {request["platform"]}')
             return False
+        if 'project_type' not in request:
+            logging.info(f'[{self.bootstrapper_name}] project_type not given — '
+                         'using fastapi_microservice')
         return True
-
-    def _resolve_config(self, request, config=None, **kwargs) -> ScaffoldRequest:
-        if request.get('source') == 'json':
-            loaded = self._BaseProjectBootstrapper__load_json_config(request['config_path'])
-            request.update(loaded)
-        return request
 
     def _plan_scaffold(self, request, config=None, **kwargs) -> List[dict]:
         return [
@@ -1012,20 +1083,18 @@ class JavaMavenBootstrapper(BaseProjectBootstrapper):
 
     def _validate_request(self, request, config=None, **kwargs) -> bool:
         required = ['project_name', 'runtime', 'platform', 'build_tool',
-                    'group_id', 'artifact_id']
+                    'group_id', 'artifact_id', 'project_type']
         if not all(k in request for k in required):
             logging.error(f'[{self.bootstrapper_name}] Missing: '
                           f'{[k for k in required if k not in request]}')
             return False
         if request['runtime'] != 'java' or request['build_tool'] != 'maven':
+            logging.error(f'[{self.bootstrapper_name}] Wrong runtime/build_tool')
+            return False
+        if request['platform'] not in self.APPROVED_PLATFORMS:
+            logging.error(f'[{self.bootstrapper_name}] Platform not approved: {request["platform"]}')
             return False
         return True
-
-    def _resolve_config(self, request, config=None, **kwargs) -> ScaffoldRequest:
-        if request.get('source') == 'json':
-            loaded = self._BaseProjectBootstrapper__load_json_config(request['config_path'])
-            request.update(loaded)
-        return request
 
     def _plan_scaffold(self, request, config=None, **kwargs) -> List[dict]:
         return [
@@ -1299,7 +1368,17 @@ class ProjectBootstrapperFactory:
         """
         Return instantiated bootstrapper for runtime + build_tool combination.
         Raises ValueError if combination is not registered.
+
+        A source='json' | 'prompt' request that does not carry runtime and
+        build_tool inline is resolved first (in place: the caller's dict
+        becomes the resolved inline request), so selection never needs the two
+        keys duplicated and bootstrap() does not resolve a second time.
         """
+        if (request.get('source', 'inline') in ('json', 'prompt')
+                and not (request.get('runtime') and request.get('build_tool'))):
+            resolved = resolve_scaffold_request(request, config)
+            request.clear()
+            request.update(resolved)
         key = (request.get('runtime', ''), request.get('build_tool', ''))
         bootstrapper_cls = cls._REGISTRY.get(key)
         if not bootstrapper_cls:
@@ -1379,20 +1458,38 @@ class BootstrapAndGenerateWorkflow:
                     result['success'] = True
                     return result
 
-            # A2C generation phase
+            # A2C generation phase — the second, explicit phase. P0 and A2C stay
+            # composable siblings: this class only hands P0's dev_request to A2C's
+            # SDLCWorkflow.execute(dev_request, config).
             dev_request = (
-                result.get('scaffold_result', {}).get('dev_request')
+                (result.get('scaffold_result') or {}).get('dev_request')
                 or config.get('a2c_dev_request')
             )
             if dev_request:
-                # Import lazily to avoid circular dependency
-                # from src.a2c.sdlc_assistant_agent import SDLCAssistantAgent
-                # sdlc = SDLCAssistantAgent(config=config)
-                # generation_result = await sdlc.run(dev_request, config)
-                # result['generation_result'] = generation_result
-                logging.info('[BootstrapAndGenerateWorkflow] A2C handoff ready — '
-                             f'dev_request populated: {list(dev_request.keys())}')
-                result['generation_result'] = {'status': 'ready', 'dev_request': dev_request}
+                if (config.get('a2c') or {}).get('handoff_only'):
+                    result['generation_result'] = {'status': 'ready', 'dev_request': dev_request}
+                else:
+                    try:
+                        from a2c_base import SDLCWorkflow, DevPlatformValidationService
+                    except ImportError as e:            # a2c_base needs e2a_base on sys.path
+                        raise RuntimeError(
+                            'A2C phase needs a2c_base.py and e2a_base.py importable; set '
+                            "config['a2c']['handoff_only']=True to stop after P0") from e
+                    # Validation runs before the workflow (BaseValidationService tier).
+                    validator = config.get('validation_service') or DevPlatformValidationService()
+                    verdict = validator.validate('SDLCWorkflow', dev_request, config)
+                    if not verdict['valid']:
+                        result['generation_result'] = {'status': 'INVALID', 'validation': dict(verdict)}
+                        result['errors'] += list(verdict['errors'])
+                        return result
+                    generation = SDLCWorkflow(config=config).execute(dict(dev_request), config)
+                    result['generation_result'] = generation
+                    if generation.get('errors') or generation.get('status') in (
+                            'CONFLICT', 'FAILED_FINAL', 'RECOVERY_REQUIRED'):
+                        result['errors'] += list(generation.get('errors') or [generation['status']])
+                        return result
+            elif generate_only:
+                raise ValueError("generate_only=True needs config['a2c_dev_request']")
 
             result['success'] = True
             return result

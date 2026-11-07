@@ -7,3 +7,10 @@ Atomic idempotency claim (one owner per key); optimistic concurrency via put_if_
 leases with fencing tokens for scheduled repair; single-flight get_or_load; additive deadline field.
 All model calls go through BaseLLMAgentService (permit, then quota, then call); agents add no semaphore or rate limiter.
 State validation is NOT a BaseAgent method: it lives in BaseValidationService.validate() and runs before the agent is built.
+Runtime patterns: {runtime_patterns}
+Generate all nine: BaseAgent run(), BaseWorkflow execute(), BaseRAGPipeline retrieve(), BaseToolService execute(),
+BaseLLMAgentService process_inference() + process_inference_stream(), and the interfaces BaseInfraProvisioner,
+BaseObservability, BasePipeline, BaseGovernanceFramework (no shared implementation).
+Class variables: idempotency = {idempotency}, async_mode = {async_mode}.
+DOMAIN: {domain} | RUNTIME: {runtime} {runtime_version} | BASE CLASS: {base_class_name}
+ADDITIONAL NFRs: {system_prompt_additions}

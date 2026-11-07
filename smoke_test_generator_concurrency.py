@@ -21,10 +21,17 @@ def check(name, cond):
     ok += 1
     print('PASS', name)
 
+import generator_templates as T
+TMP = tempfile.mkdtemp()
+# A model reply that passes the structural critic for every generator type used
+# below: the E2A skeleton plus an inherited 'Refund' class.
+VALID = T.e2a_abstract('python') + '\n\n' + T.inherited(
+    'e2a_inherited', 'python', 'Refund', '').replace('import logging\n', 'import logging')
+
 class FakeLLMService:
     """Stands in for E2A's BaseLLMAgentService: async process_inference that
     reports failures as {'status': 'FAILED'} instead of raising."""
-    def __init__(self, text='generated', delay=0.0, fail_with=None):
+    def __init__(self, text=VALID, delay=0.0, fail_with=None):
         self.text, self.delay, self.fail_with = text, delay, fail_with
         self.calls, self.lock, self.last = 0, threading.Lock(), None
     async def process_inference(self, messages, tenant_id=None, deadline=None, **kw):
@@ -41,15 +48,15 @@ class FakeLLMService:
 class ScoredGen(E2AAbstractClassGenerator):
     """Critic returns scripted scores to exercise the regeneration loop."""
     def __init__(self, scores): self.scores, self.n = list(scores), 0
-    def evaluate_output(self, response, request, config=None, **kw):
+    def _evaluate_output(self, response, request, config=None, **kw):
         self.n += 1
         return self.scores.pop(0) if self.scores else 0.0
 
 class WriteFails(E2AAbstractClassGenerator):
-    def write_output(self, *a, **k): raise OSError('disk full')
+    def _write_output(self, *a, **k): raise OSError('disk full')
 
 def req(**o):
-    r = {'generator_type': 'e2a_abstract', 'runtime': 'python', 'output_path': './out',
+    r = {'generator_type': 'e2a_abstract', 'runtime': 'python', 'output_path': TMP + '/out',
          'agent_name': 'Refund', 'tenant_id': 't1'}
     r.update(o); return r
 
@@ -62,14 +69,14 @@ check('generate succeeds through llm_service', r1['success'] and r1['status'] ==
 check('tenant and correlation reach the gateway', llm.last['tenant_id'] == 't1')
 key = r1['generator_key']
 check('generator_key is name:type:runtime:platform', key == 'Refund:e2a_abstract:python:standalone')
-check('claim settled SUCCEEDED', store.state_of(key, 't1') == 'SUCCEEDED')
+check('claim settled SUCCEEDED', store.state_of('g2c:' + key, 't1') == 'SUCCEEDED')
 
 # ---- 2 replay: idempotent no-op, no second model call, no second write
 r2 = g.generate(req(), cfg)
 check('replay returns stored result without a model call', r2['status'] == 'replay' and r2.get('replayed') and llm.calls == 1)
 
 # ---- 3 conflict: same key, different request
-r3 = g.generate(req(output_path='./other'), cfg)
+r3 = g.generate(req(output_path=TMP + '/other'), cfg)
 check('same key with different request is a conflict', r3['status'] == 'conflict' and not r3['success'])
 
 # ---- 4 tenant scoping: another tenant does not collide
@@ -95,7 +102,7 @@ bad = FakeLLMService(fail_with='AdmissionTimeout')
 cfg = {'idempotency_store': store, 'llm_service': bad}
 r = E2AAbstractClassGenerator().generate(req(), cfg)
 check('rejected model call is a typed retryable outcome', r['status'] == 'inference_rejected' and r['retryable'])
-check('claim settled FAILED_RETRYABLE', store.state_of(r['generator_key'], 't1') == 'FAILED_RETRYABLE')
+check('claim settled FAILED_RETRYABLE', store.state_of('g2c:' + r['generator_key'], 't1') == 'FAILED_RETRYABLE')
 r = E2AAbstractClassGenerator().generate(req(), {'idempotency_store': store, 'llm_service': FakeLLMService()})
 check('retry after a rejection generates', r['status'] == 'generated')
 
@@ -103,9 +110,9 @@ check('retry after a rejection generates', r['status'] == 'generated')
 store, llm = InMemoryClaimStore(), FakeLLMService()
 r = E2AAbstractClassGenerator().generate(req(deadline_ms=0), {'idempotency_store': store, 'llm_service': llm})
 check('expired deadline stops before any model call', r['status'] == 'deadline_exceeded' and llm.calls == 0)
-check('deadline-cancelled run settles retryable', store.state_of(r['generator_key'], 't1') == 'FAILED_RETRYABLE')
+check('deadline-cancelled run settles retryable', store.state_of('g2c:' + r['generator_key'], 't1') == 'FAILED_RETRYABLE')
 llm2 = FakeLLMService()
-E2AAbstractClassGenerator().generate(req(agent_name='D2', deadline_ms=5000), {'llm_service': llm2})
+E2AAbstractClassGenerator().generate(req(agent_name='D2', deadline_ms=5000, output_path=TMP + '/d2'), {'llm_service': llm2})
 check('deadline is passed to the gateway', llm2.last['deadline'] is not None and llm2.last['deadline'].remaining() > 0)
 
 # ---- 8 critic regeneration: max 2 retries, then final
@@ -116,7 +123,7 @@ check('low score regenerates once and then passes', r['success'] and r['critic_r
 store, llm = InMemoryClaimStore(), FakeLLMService()
 sg = ScoredGen([0.1, 0.1, 0.1, 0.1]); r = sg.generate(req(), {'idempotency_store': store, 'llm_service': llm})
 check('critic below threshold after two retries stops at 3 attempts', r['status'] == 'critic_threshold_not_met' and llm.calls == 3)
-check('critic failure settles FAILED_FINAL', store.state_of(r['generator_key'], 't1') == 'FAILED_FINAL')
+check('critic failure settles FAILED_FINAL', store.state_of('g2c:' + r['generator_key'], 't1') == 'FAILED_FINAL')
 r = ScoredGen([1.0]).generate(req(), {'idempotency_store': store, 'llm_service': llm})
 check('a final failure is not re-executed', r['status'] == 'failed_final' and llm.calls == 3)
 
@@ -127,11 +134,11 @@ try:
     check('write failure propagates', False)
 except OSError:
     check('write failure propagates', True)
-check('failure after writing began parks UNKNOWN', store.state_of('Refund:e2a_abstract:python:standalone', 't1') == 'UNKNOWN')
+check('failure after writing began parks UNKNOWN', store.state_of('g2c:' + 'Refund:e2a_abstract:python:standalone', 't1') == 'UNKNOWN')
 r = E2AAbstractClassGenerator().generate(req(), {'idempotency_store': store, 'llm_service': FakeLLMService()})
 check('UNKNOWN is left for reconciliation, never blindly re-run', r['status'] == 'recovery_required')
 store = InMemoryClaimStore()
-guard = ClaimGuard(store, 'k', 't1', 'fp'); guard.acquire(); store.expire_lease('k', 't1')
+guard = ClaimGuard(store, 'g2c:k', 't1', 'fp'); guard.acquire(); store.expire_lease('g2c:k', 't1')
 r = E2AAbstractClassGenerator().generate(req(agent_name='K'), {'idempotency_store': store, 'llm_service': FakeLLMService()})
 check('an unrelated key is unaffected by another expired claim', r['status'] == 'generated')
 
@@ -144,7 +151,7 @@ check('reconciler takes over an expired claim', b.status.value == 'CLAIMED')
 check('stale owner cannot complete the key', store.complete('x', {'late': True}, tenant_id='t1', owner=a.owner) is False)
 
 # ---- 11 no store, no gateway: simplified stub path still works
-r = E2AAbstractClassGenerator().generate(req(agent_name='Plain'), {})
+r = E2AAbstractClassGenerator().generate(req(agent_name='Plain', output_path=TMP + '/plain'), {})
 check('stub path without store or gateway still generates', r['success'])
 try:
     E2AAbstractClassGenerator().generate({**req(), 'tenant_id': None}, {'llm_service': FakeLLMService()})
@@ -186,10 +193,10 @@ rq = {'generator_type': 'e2a_inherited', 'runtime': 'python', 'agent_name': 'Ref
       'output_path': tmp + '/', 'tenant_id': 't1'}
 wreq = dict(rq)
 out = wf.generate(wreq, cfg)
-check('workflow chains abstract then inherited', out['status'] == 'success' and llm.calls == 2)
+check('workflow chains abstract then inherited', out['success'] and out['status'] == 'generated' and llm.calls == 2)
 out2 = wf.generate(dict(rq), cfg)
-check('workflow replay is the idempotent no-op (no model call)', out2['output'].get('replayed') and llm.calls == 2)
-shared_path = wreq['abstract_class_path']
+check('workflow replay is the idempotent no-op (no model call)', out2.get('replayed') and llm.calls == 2)
+shared_path = out['abstract_class_path']
 abstract_path = tmp + '/common/e2a_base.py'
 os.makedirs(tmp + '/common', exist_ok=True); open(abstract_path, 'w').write('# abstract')
 used = {**rq, 'abstract_class_path': abstract_path}
@@ -230,7 +237,7 @@ done = [o for o in outs if o.get('status') == 'scaffolded']
 check('6 concurrent bootstraps of one target: exactly one writes', len(done) == 1)
 check('the others return in_progress or replay and write nothing',
       all(o.get('status') in ('in_progress', 'replay') for o in outs if o is not done[0]))
-check('claim settled SUCCEEDED after Step 14', store.state_of(done[0]['scaffold_key'], 't1') == 'SUCCEEDED')
+check('claim settled SUCCEEDED after Step 14', store.state_of('p0:' + done[0]['scaffold_key'], 't1') == 'SUCCEEDED')
 rr = SlowBoot(cfg).bootstrap(boot_req(d), cfg)
 check('replay returns the stored ScaffoldResult', rr['status'] == 'replay' and rr['replayed'] and rr['scaffold_key'] == done[0]['scaffold_key'])
 rc = SlowBoot(cfg).bootstrap(boot_req(d, license='MIT'), cfg)
@@ -242,12 +249,12 @@ class BadOutput(PythonPoetryBootstrapper):
     def _validate_output(self, result, config=None, **kw): return False
 r = BadOutput(cfg2).bootstrap(boot_req(d2), cfg2)
 check('output validation failure returns success=False', r['success'] is False)
-check('output validation failure settles FAILED_FINAL', store2.state_of('svc:python:poetry:aws', 't1') == 'FAILED_FINAL')
+check('output validation failure settles FAILED_FINAL', store2.state_of('p0:' + 'svc:python:poetry:aws', 't1') == 'FAILED_FINAL')
 class Crash(PythonPoetryBootstrapper):
     def _generate_makefile(self, *a, **k): raise RuntimeError('boom')
 d3 = tempfile.mkdtemp(); store3 = InMemoryClaimStore(); cfg3 = {'idempotency_store': store3, 'output_path': d3}
 r = Crash(cfg3).bootstrap(boot_req(d3), cfg3)
-check('failure after files began parks UNKNOWN', store3.state_of('svc:python:poetry:aws', 't1') == 'UNKNOWN')
+check('failure after files began parks UNKNOWN', store3.state_of('p0:' + 'svc:python:poetry:aws', 't1') == 'UNKNOWN')
 r = PythonPoetryBootstrapper(cfg3).bootstrap(boot_req(d3), cfg3)
 check('UNKNOWN scaffold is left for reconciliation', r['status'] == 'recovery_required')
 # failure before Step 5 is retryable
@@ -255,7 +262,7 @@ class EarlyFail(PythonPoetryBootstrapper):
     def _plan_scaffold(self, *a, **k): raise RuntimeError('plan failed')
 d4 = tempfile.mkdtemp(); store4 = InMemoryClaimStore(); cfg4 = {'idempotency_store': store4, 'output_path': d4}
 EarlyFail(cfg4).bootstrap(boot_req(d4), cfg4)
-check('failure before Step 5 settles retryable', store4.state_of('svc:python:poetry:aws', 't1') == 'FAILED_RETRYABLE')
+check('failure before Step 5 settles retryable', store4.state_of('p0:' + 'svc:python:poetry:aws', 't1') == 'FAILED_RETRYABLE')
 r = PythonPoetryBootstrapper(cfg4).bootstrap(boot_req(d4), cfg4)
 check('and a retry then succeeds', r['status'] == 'scaffolded')
 

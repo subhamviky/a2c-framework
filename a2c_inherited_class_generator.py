@@ -1,22 +1,13 @@
-from base_generator_agent import BaseGeneratorAgent
+"""A2CInheritedClassGenerator — E2A and A2C bases (generated if needed), a
+P0 scaffold and a team SDLCAssistantAgent subclass that adds its own NFRs on
+top of A2C's mandatory set (G2C Framework Reference §8). It produces the
+class file only: Terraform and CI/CD come from running A2C's SDLCWorkflow
+with a DevRequest in a second, explicit phase."""
+from inherited_generator import BaseInheritedClassGenerator
 
-class A2CInheritedClassGenerator(BaseGeneratorAgent):
+
+class A2CInheritedClassGenerator(BaseInheritedClassGenerator):
     generator_name = "A2CInheritedClassGenerator"
-
-    def validate_request(self, request, config=None, **kwargs):
-        return "runtime" in request and "agent_name" in request and "output_path" in request
-
-    def resolve_config(self, request, config=None, **kwargs):
-        return request
-
-    def build_system_prompt(self, request, config=None, **kwargs):
-        return "System prompt for A2C inherited class"
-
-    def build_user_prompt(self, request, config=None, **kwargs):
-        return f"Generate inherited A2C agent {request['agent_name']}"
-
-    def evaluate_output(self, response, request, config=None, **kwargs):
-        return 1.0
-
-    def write_output(self, response, request, config=None, **kwargs):
-        return [f"{request['output_path']}/{request['agent_name']}.py"]
+    generator_type = "a2c_inherited"
+    critic_type = "a2c_inherited"
+    kind = "a2c_inherited"

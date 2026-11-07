@@ -3,14 +3,114 @@
   "title": "Generator Config Schema",
   "type": "object",
   "properties": {
-    "generator_type": { "type": "string" },
-    "runtime": { "type": "string" },
-    "output_path": { "type": "string" },
-    "agent_name": { "type": "string" },
-    "abstract_class_source": { "type": "string" },
-    "abstract_class_path": { "type": "string" },
-    "package_name": { "type": "string" },
-    "scaffold": { "type": "object" }
+    "generator_type": {
+      "type": "string",
+      "enum": [
+        "e2a_abstract",
+        "a2c_abstract",
+        "e2a_inherited",
+        "a2c_inherited"
+      ]
+    },
+    "runtime": {
+      "type": "string",
+      "enum": [
+        "python",
+        "java",
+        "node",
+        "go"
+      ]
+    },
+    "output_path": {
+      "type": "string"
+    },
+    "agent_name": {
+      "type": "string"
+    },
+    "abstract_class_source": {
+      "type": "string",
+      "enum": [
+        "generate",
+        "path",
+        "package"
+      ]
+    },
+    "abstract_class_path": {
+      "type": "string"
+    },
+    "package_name": {
+      "type": "string"
+    },
+    "scaffold": {
+      "type": "object"
+    },
+    "source": {
+      "type": "string"
+    },
+    "config_path": {
+      "type": "string"
+    },
+    "runtime_version": {
+      "type": "string"
+    },
+    "idempotency": {
+      "type": "boolean"
+    },
+    "async_mode": {
+      "type": "boolean"
+    },
+    "platform": {
+      "type": "string"
+    },
+    "domain": {
+      "type": "string"
+    },
+    "team": {
+      "type": "string"
+    },
+    "company": {
+      "type": "string"
+    },
+    "tenant_id": {
+      "type": "string"
+    },
+    "deadline_ms": {
+      "type": "integer"
+    },
+    "system_prompt_additions": {
+      "type": "string"
+    },
+    "user_prompt": {
+      "type": "string"
+    },
+    "mandatory_nfrs": {
+      "type": "array"
+    },
+    "optional_nfrs": {
+      "type": "array"
+    },
+    "base_class_name": {
+      "type": "string"
+    },
+    "abstract_methods": {
+      "type": "array"
+    },
+    "class_description": {
+      "type": "string"
+    },
+    "abstract_class_config": {
+      "type": "object"
+    },
+    "model_id": {
+      "type": "string"
+    },
+    "critic_model_id": {
+      "type": "string"
+    }
   },
-  "required": ["generator_type", "runtime", "output_path"]
+  "required": [
+    "generator_type",
+    "runtime",
+    "output_path"
+  ]
 }
