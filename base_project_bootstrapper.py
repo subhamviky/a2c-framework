@@ -20,6 +20,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from a2c_concurrency import ClaimGuard, fingerprint_of, status_of
+
 logging.basicConfig(level=logging.INFO)
 
 
@@ -104,6 +106,9 @@ class ScaffoldResult(TypedDict, total=False):
     latency_ms:           float
     errors:               List[str]
     dev_request:          Optional[dict]  # A2C DevRequest — populated on handoff
+    status:               str         # scaffolded | replay | in_progress | conflict |
+                                      # recovery_required | failed_final
+    replayed:             bool        # True when a stored result is returned
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -209,6 +214,9 @@ class BaseProjectBootstrapper(ABC):
             'success': False, 'trace_id': trace_id,
             'scaffolded_files': [], 'errors': []
         }
+        guard = None
+        writing_started = False
+        output_invalid = False
 
         try:
             # Step 1 — resolve
@@ -223,18 +231,34 @@ class BaseProjectBootstrapper(ABC):
                     'check runtime, platform, build_tool, project_name'
                 )
 
-            # Step 3 — idempotency
+            # Step 3 — idempotency. With a store configured the ATOMIC CLAIM is the
+            # authority (P0 Framework Reference 4.1); the directory check below is only
+            # a fast path beneath it. Without a store the guarantee is single-process.
             key = self.__generate_scaffold_key(request)
             request['scaffold_key'] = key
+            store = (config.get('scaffold_idempotency_store')
+                     or config.get('idempotency_store'))
+            claim_key = key if self.idempotency else f'{key}#rescaffold'
+            guard = ClaimGuard(store, claim_key,
+                               request.get('tenant_id') or config.get('tenant_id'),
+                               fingerprint_of(request), config,
+                               lease_seconds=float(config.get('claim_lease_seconds', 300)))
+            claim = guard.acquire()
+            if not guard.owned:
+                return self.__not_owner(claim, key, result)
             if self.idempotency and self.__is_already_scaffolded(key, config):
                 logging.info(f'[{self.bootstrapper_name}] Skip — already scaffolded: {key}')
-                result.update({'success': True, 'scaffold_key': key})
+                result.update({'success': True, 'scaffold_key': key, 'status': 'replay',
+                               'replayed': True})
+                guard.succeed(dict(result))
                 return result
 
             # Step 4 — plan
             request['scaffold_plan'] = self._plan_scaffold(request, config, **kwargs)
 
-            # Step 5 — directory structure
+            # Step 5 — directory structure (first side effect: from here on a failure
+            # can leave a partial scaffold)
+            writing_started = True
             root = self.__resolve_output_path(request, config)
             self._scaffold_structure(request, config, root, **kwargs)
             result['project_root'] = root
@@ -287,6 +311,7 @@ class BaseProjectBootstrapper(ABC):
 
             # Step 14 — validate output
             if not self._validate_output(result, config, **kwargs):
+                output_invalid = True
                 raise ValueError(f'[{self.bootstrapper_name}] Output validation failed')
 
             # Step 15 — latency SLO
@@ -303,7 +328,7 @@ class BaseProjectBootstrapper(ABC):
 
             # Step 16 — observability log
             request['scaffolded_files'] = result['scaffolded_files']
-            result.update({'scaffold_key': key, 'success': True})
+            result.update({'scaffold_key': key, 'success': True, 'status': 'scaffolded'})
             logging.info({
                 'bootstrapper':  self.bootstrapper_name,
                 'scaffold_key':  key,
@@ -318,10 +343,31 @@ class BaseProjectBootstrapper(ABC):
             if a2c_cfg.get('enabled', False):
                 result['dev_request'] = self.__build_dev_request(request, a2c_cfg)
 
+            # Settle succeeded. The stored result includes dev_request, so a replay
+            # feeds the same hand-off into the A2C phase. A deliberate re-scaffold
+            # (idempotency=False) settles retryable instead: the claim is then only
+            # mutual exclusion, and the next deliberate run can claim again.
+            if self.idempotency:
+                guard.succeed(dict(result))
+            else:
+                guard.fail(retryable=True)
             return result
 
         except Exception as e:
+            # Output validation failure: final (never blindly re-run). Any other failure
+            # after Step 5 began: UNKNOWN, parked for reconciliation. Before Step 5:
+            # retryable — nothing was written.
+            if guard is not None and not guard.settled:
+                if output_invalid:
+                    guard.fail(retryable=False)
+                else:
+                    guard.settle_exception(e, side_effects_possible=writing_started)
             return self._handle_error(e, request, result, config, **kwargs)
+        finally:
+            # Cancellation and any other escape: never leave a claim IN_PROGRESS.
+            if guard is not None and not guard.settled:
+                guard.settle_exception(RuntimeError('interrupted'),
+                                       side_effects_possible=writing_started)
 
     # ──────────────────────────────────────────────────────────────────────────
     # PROTECTED — override in subclass
@@ -585,6 +631,24 @@ class BaseProjectBootstrapper(ABC):
             f":{request.get('build_tool','unknown')}"
             f":{request.get('platform','standalone')}"
         )
+
+    def __not_owner(self, claim, key: str, result: ScaffoldResult) -> ScaffoldResult:
+        """Typed outcome for a caller that does not own the scaffold_key."""
+        st = status_of(claim)
+        if st == 'REPLAY':
+            stored = dict(claim.result or {})
+            stored.update(status='replay', replayed=True)
+            return stored          # nothing is written
+        why = {
+            'IN_PROGRESS': 'another run holds this scaffold_key',
+            'CONFLICT': 'same scaffold_key presented with a different request',
+            'RECOVERY_REQUIRED': 'a previous owner expired without settling; a partial '
+                                 'scaffold may exist — reconcile before re-running',
+            'FAILED_FINAL': 'this scaffold_key failed finally and is not re-executed',
+        }.get(st, st)
+        result.update({'success': False, 'scaffold_key': key, 'status': st.lower()})
+        result['errors'].append(why)
+        return result
 
     def __is_already_scaffolded(self, key: str, config: dict) -> bool:
         """

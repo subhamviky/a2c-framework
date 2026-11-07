@@ -11,6 +11,9 @@ class GeneratorRequest(TypedDict, total=False):
     scaffold: dict
     model_id: str
     critic_model_id: str
+    tenant_id: str            # scopes the idempotency claim
+    platform: str             # part of generator_key; default 'standalone'
+    deadline_ms: int          # remaining budget; caps every wait
 
 class GeneratorResult(TypedDict, total=False):
     success: bool
@@ -22,3 +25,8 @@ class GeneratorResult(TypedDict, total=False):
     trace_id: str
     latency_ms: float
     errors: List[str]
+    status: str               # generated | replay | in_progress | conflict | recovery_required
+                              # | failed_final | inference_rejected | deadline_exceeded
+                              # | critic_threshold_not_met
+    replayed: bool            # True when the stored result of an earlier run was returned
+    retryable: bool
