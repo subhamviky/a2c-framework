@@ -131,6 +131,7 @@ A2C is a meta-application of the [E2A Architecture Framework](https://github.com
 
 * **The agent is governed by E2A:** Inherits single entry point execution, non-amplifiable credentials, and token budgets.
 * **The model call is decoupled:** Generator and SDLC agents delegate inference to E2A's vendor-neutral `BaseLLMAgentService` — concurrency, RPM/TPM limits, DLP and typed failure semantics are inherited, and swapping provider is a binding change only.
+* **Concurrent generation is bounded:** with a configured idempotency store, `generate()` and `bootstrap()` take an atomic claim per key (one owner, typed `replay` / `in_progress` / `conflict` / `recovery_required` outcomes), settle it on every exit path, and send every model call through `config['llm_service']`. Shared abstract classes carry a compare-and-set ownership record, so saga compensation never deletes one it did not create. See `a2c_concurrency.py` and `smoke_test_generator_concurrency.py`. These run against in-memory test doubles; they have not been validated against a live store, a live inference gateway or production load.
 * **The generated code follows E2A:** Outputs Clean Architecture microservices with mandatory operational NFRs.
 * **Architecture is enforced structurally:** Applied as a compiler constraint, not a prompt suggestion.
 
@@ -242,6 +243,8 @@ a2c-framework/
 ├── a2c_abstract_class_generator.py · a2c_inherited_class_generator.py
 ├── e2a_abstract_class_generator.py · e2a_inherited_class_generator.py
 ├── base_generator_agent.py · generator_critic_agent.py · generator_factory.py
+├── a2c_concurrency.py             claim store, shared-artifact ownership, deadlines
+├── smoke_test_generator_concurrency.py    concurrency smoke tests (in-memory test doubles)
 ├── developer_platform_workflow.py · generator_api_router.py · typedicts.py      G2C
 ├── scaffold-config-schema.json
 ├── schemas/                       generator-config-schema.json
