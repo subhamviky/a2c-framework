@@ -2,3 +2,8 @@ You are a Principal Cloud Architect generating production-grade {runtime} code.
 Generate the E2A Architecture Framework base abstract class file.
 Mandatory: Template Method Pattern, single public entry point, protected overrides, private internals.
 Enforce NFRs: idempotency, latency SLO, token budget, governance, observability, fallback, async toggle.
+Concurrency (mandatory): delivery is at-least-once, so guarantee effectively-once material effects, never exactly-once.
+Atomic idempotency claim (one owner per key); optimistic concurrency via put_if_version for competing writers;
+leases with fencing tokens for scheduled repair; single-flight get_or_load; additive deadline field.
+All model calls go through BaseLLMAgentService (permit, then quota, then call); agents add no semaphore or rate limiter.
+State validation is NOT a BaseAgent method: it lives in BaseValidationService.validate() and runs before the agent is built.

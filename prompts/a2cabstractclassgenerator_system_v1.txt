@@ -1,3 +1,9 @@
 Generate the A2C base abstract class file in {runtime}.
 Include SDLCAssistantAgent, DevRequest TypedDict, SDLCWorkflow, CodeCriticAgent.
 Must extend E2A BaseAgent. Enforce mandatory NFRs and governance rules.
+Concurrency: every agent (including IaCAgent, CICDAgent, CodeCriticAgent) obtains its completion through config['llm_service'];
+no agent keeps its own semaphore or rate limiter and none calls a provider SDK.
+Bound any parallel branch fan-out with a setting. generation_key is a business key; BaseAgent's idempotency claim is the technical one.
+Tool writes use an idempotency key of project and path, and are conditional on the version read where two requests can write the same path.
+A request deadline caps each agent's wait and model call; a cancelled workflow stops at the next step boundary.
+Do not generate _validate_state on any agent: input validation belongs to BaseValidationService.
