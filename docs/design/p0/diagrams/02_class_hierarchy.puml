@@ -1,0 +1,40 @@
+@startuml
+!include ../../common/style.puml
+title P0 class model — implemented and reference subclasses
+abstract class BaseProjectBootstrapper <<template · one entry point>> {
+  +bootstrapper_name : str
+  +idempotency : bool = True
+  +APPROVED_RUNTIMES / APPROVED_PLATFORMS
+  +APPROVED_BUILD_TOOLS / MANIFEST_FILENAMES
+  +bootstrap(request, config=None, **kw) : ScaffoldResult
+}
+class PythonPoetryBootstrapper <<Implemented>>
+class JavaMavenBootstrapper <<Implemented>>
+class PythonPipBootstrapper <<Reference contract>>
+class JavaGradleBootstrapper <<Reference contract>>
+class NodeNpmBootstrapper <<Reference contract>>
+class GoModulesBootstrapper <<Reference contract>>
+class ProjectBootstrapperFactory <<registry>> {
+  -_REGISTRY : Dict[(runtime, build_tool), type]
+  +{static} create(request, config) : BaseProjectBootstrapper
+  +{static} register(runtime, build_tool, cls)
+}
+class BootstrapAndGenerateWorkflow <<composer>> {
+  +config : dict
+  +execute(scaffold_request, config=None,\n  bootstrap_only=False, generate_only=False) : dict
+}
+class ScaffoldRequest <<TypedDict>>
+class ScaffoldResult <<TypedDict>>
+BaseProjectBootstrapper <|-- PythonPoetryBootstrapper
+BaseProjectBootstrapper <|-- JavaMavenBootstrapper
+BaseProjectBootstrapper <|-- PythonPipBootstrapper
+PythonPoetryBootstrapper -[hidden]down- PythonPipBootstrapper
+JavaMavenBootstrapper -[hidden]down- JavaGradleBootstrapper
+BaseProjectBootstrapper <|-- JavaGradleBootstrapper
+BaseProjectBootstrapper <|-- NodeNpmBootstrapper
+BaseProjectBootstrapper <|-- GoModulesBootstrapper
+ProjectBootstrapperFactory ..> BaseProjectBootstrapper : instantiates
+BootstrapAndGenerateWorkflow ..> ProjectBootstrapperFactory
+BaseProjectBootstrapper ..> ScaffoldRequest : consumes
+BaseProjectBootstrapper ..> ScaffoldResult : returns
+@enduml

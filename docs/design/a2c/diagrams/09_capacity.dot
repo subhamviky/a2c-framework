@@ -1,0 +1,12 @@
+digraph G {
+  graph [rankdir=LR, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>Concurrency and capacity — where each bound lives</b>>, fontcolor="#1F3864", nodesep=0.3, ranksep=0.6, pad=0.2];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=10.5, fontcolor="#1F3864", margin="0.12,0.06"];
+  edge [color="#2E4A6B", fontname="DejaVu Sans", fontsize=9.5];
+  r1 [label="DevRequest A"]; r2 [label="DevRequest A (duplicate)"];
+  claim [label="BaseWorkflow claim\na2c:<generation_key> (tenant)", fillcolor="#E6F4F5", color="#0F7C8C"];
+  wf [label="SDLCWorkflow\nbounded branch fan-out"];
+  gw [label="BaseLLMAgentService\ntenant/pod permit · RPM/TPM ·\nper-call timeout · deadline", fillcolor="#DCE8F5"];
+  tool [label="LocalArtifactWriter / tools\nconditional write on\nversion read", fillcolor="#DCE8F5"];
+  rep [label="stored result / in progress", fillcolor="#FFF8E1", color="#D4A017"];
+  r1->claim->wf; r2->claim; claim->rep [style=dashed]; wf->gw; wf->tool;
+}

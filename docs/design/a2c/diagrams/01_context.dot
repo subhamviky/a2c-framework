@@ -1,0 +1,14 @@
+digraph G {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>A2C context — governed agents that generate code, IaC and CI/CD</b>>, fontcolor="#1F3864", nodesep=0.35, ranksep=0.45, pad=0.25];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=11, fontcolor="#1F3864", margin="0.16,0.08"];
+  edge [color="#2E4A6B", fontname="DejaVu Sans", fontsize=10];
+  dev [label="Developer · CI", fillcolor="#FFFFFF"]; p0 [label="P0 bootstrap()\nScaffoldResult.dev_request"]; bag [label="BootstrapAndGenerateWorkflow\n(P0 + A2C siblings)"]; aidlc [label="AI-DLC orchestrator\nPhase B"];
+  g2c [label="G2C A2CInheritedClassGenerator\n(produces the agent class only)", fillcolor="#FFF8E1", color="#D4A017"];
+  val [label="DevPlatformValidationService\nvalidate(agent_name, state)\n_validate_<agent_name>", fillcolor="#E6F4F5", color="#0F7C8C"];
+  wf [label="SDLCWorkflow.execute(dev_request, config)\nRequirements → CodeGen → IaC → CICD → CodeCritic", fillcolor="#DCE8F5"];
+  llm [label="config['llm_service']\nBaseLLMAgentService", fillcolor="#E6F4F5", color="#0F7C8C"];
+  tools [label="LocalArtifactWriter (default)\nor CodeGenTool · IaCGenTool ·\nCICDGenTool · TerraformValidateTool"];
+  out [label="Repository artifacts\nservice code · Terraform · GitHub Actions ·\ncritic report", shape=folder, fillcolor="#FFFFFF"];
+  dev -> val; p0 -> bag -> val; aidlc -> val; g2c -> wf [style=dashed, label="second phase:\ninstantiate + run with DevRequest"];
+  val -> wf [label="valid"]; wf -> llm; wf -> tools -> out;
+}

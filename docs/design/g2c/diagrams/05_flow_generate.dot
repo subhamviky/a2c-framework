@@ -1,0 +1,24 @@
+digraph G {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>generate() — fixed 12-step sequence</b>>, fontcolor="#1F3864", nodesep=0.3, ranksep=0.2, pad=0.2];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=10.5, fontcolor="#1F3864", margin="0.12,0.04", width=4.8];
+  edge [color="#2E4A6B", fontname="DejaVu Sans", fontsize=9.5];
+  s1 [label="1  _resolve_config()  — source json (generator section)"];
+  s2 [label="2  _validate_request()  — False → ValueError"];
+  s3 [label="3  _apply_policy()  — runtime · generator_type · NFR allow-lists"];
+  s4 [label="4  claim g2c:generator_key; local fast path without a store", fillcolor="#E6F4F5", color="#0F7C8C"];
+  sp [label="   _prepare()  — inherited: abstract chain · P0 inline · copy base", fillcolor="#DCE8F5"];
+  s5 [label="5  _build_system_prompt()  — versioned file + RUNTIME_PATTERNS + additions"];
+  s6 [label="6  _build_user_prompt()"];
+  s7 [label="7  __track_tokens()  — ≤ GENERATOR_MAX_TOKENS (32 000)"];
+  s8 [label="8  _infer() → config['llm_service']  |  _template_output()", fillcolor="#E6F4F5", color="#0F7C8C"];
+  s9 [label="9  _evaluate_output() → GeneratorCriticAgent.review()"];
+  s10 [label="10 _fallback() + re-infer while score < 0.75 (≤ 2 retries)"];
+  s11 [label="11 _write_output()  — runtime-correct file names"];
+  s12 [label="12 latency SLO (60 000 ms) + structured log", fillcolor="#E3F1E3", color="#3B7D3B"];
+  rep [label="replay → stored GeneratorResult\nin_progress · conflict ·\nrecovery_required", fillcolor="#FFF8E1", color="#D4A017", width=2.6];
+  fin [label="critic_threshold_not_met\n→ _handle_error (final)", fillcolor="#FBE9E7", color="#C0504D", width=2.6];
+  s1->s2->s3->s4->sp->s5->s6->s7->s8->s9->s10->s11->s12;
+  s4 -> rep [label=" not claimed"]; s10 -> fin [label=" still < 0.75"];
+  s10 -> s8 [style=dashed, constraint=false, label="retry"];
+  {rank=same; s4; rep} {rank=same; s10; fin}
+}

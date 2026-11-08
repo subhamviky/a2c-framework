@@ -1,0 +1,28 @@
+@startuml
+!include ../../common/style.puml
+title G2C generator hierarchy
+abstract class BaseGeneratorAgent <<template · one entry point>> {
+  +generator_name / generator_type / critic_type
+  +generate(request, config=None, **kw) : GeneratorResult
+}
+class E2AAbstractClassGenerator <<e2a_abstract>> {
+  +output: e2a_base.* (9 classes)
+}
+class A2CAbstractClassGenerator <<a2c_abstract>> {
+  +output: a2c_base.*
+}
+abstract class BaseInheritedClassGenerator <<phases 5–8>> {
+  #_prepare() : abstract chain · P0 · copy base
+  #_write_output() : class inside the scaffold
+}
+class E2AInheritedClassGenerator <<e2a_inherited>>
+class A2CInheritedClassGenerator <<a2c_inherited>>
+BaseGeneratorAgent <|-- E2AAbstractClassGenerator
+BaseGeneratorAgent <|-- A2CAbstractClassGenerator
+BaseGeneratorAgent <|-- BaseInheritedClassGenerator
+BaseInheritedClassGenerator <|-- E2AInheritedClassGenerator
+BaseInheritedClassGenerator <|-- A2CInheritedClassGenerator
+A2CAbstractClassGenerator ..> E2AAbstractClassGenerator : e2a context
+BaseInheritedClassGenerator ..> E2AAbstractClassGenerator : chain
+BaseInheritedClassGenerator ..> A2CAbstractClassGenerator : chain (a2c)
+@enduml

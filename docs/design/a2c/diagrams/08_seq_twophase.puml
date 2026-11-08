@@ -1,0 +1,17 @@
+@startuml
+!include ../../common/style.puml
+title Two-phase invocation — class generation, then explicit A2C run
+participant "Caller" as C
+participant "DeveloperPlatform\nWorkflow (G2C)" as G
+participant "P0" as P
+participant "SDLCWorkflow\n(A2C)" as W
+== Phase 1 — class file ==
+C -> G : generate(GeneratorRequest{a2c_inherited, scaffold})
+G -> P : bootstrap(scaffold, config{a2c.enabled})
+P --> G : ScaffoldResult{dev_request}
+G --> C : GeneratorResult{generated_files, scaffold_result}
+note over C : no Terraform or CI/CD exists yet
+== Phase 2 — artifacts ==
+C -> W : execute(DevRequest, config)
+W --> C : DevRequest{generated_code, generated_iac,\ngenerated_cicd, critic_report}
+@enduml

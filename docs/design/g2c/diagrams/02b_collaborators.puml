@@ -1,0 +1,34 @@
+@startuml
+!include ../../common/style.puml
+title G2C collaborators
+class GeneratorAPIRouter <<FastAPI>>
+class DeveloperPlatformWorkflow <<orchestrator>> {
+  +generate(request, config=None) : GeneratorResult
+  +compensate(request, result) : dict
+}
+class GeneratorFactory <<registry>> {
+  +{static} create(request, config)
+  +{static} register(gen_type, cls)
+}
+abstract class BaseGeneratorAgent
+class GeneratorCriticAgent <<quality gate>> {
+  +review(response, request) : report
+  +score(response, request) : float
+}
+class "generator_templates" as TPL <<template mode>>
+class "E2A BaseLLMAgentService" as LLM
+class "a2c_concurrency" as CC <<claim · registry>>
+class "P0 ProjectBootstrapperFactory" as P0
+GeneratorAPIRouter ..> DeveloperPlatformWorkflow
+GeneratorAPIRouter ..> GeneratorFactory
+DeveloperPlatformWorkflow ..> GeneratorFactory
+DeveloperPlatformWorkflow ..> CC : artifact registry
+GeneratorFactory ..> BaseGeneratorAgent : instantiates
+BaseGeneratorAgent ..> GeneratorCriticAgent : step 9
+BaseGeneratorAgent ..> LLM : _infer()
+BaseGeneratorAgent ..> TPL : no llm_service
+BaseGeneratorAgent ..> CC : claim g2c:*
+BaseGeneratorAgent ..> P0 : inherited, 7–8
+GeneratorCriticAgent -[hidden]down- TPL
+LLM -[hidden]down- CC
+@enduml

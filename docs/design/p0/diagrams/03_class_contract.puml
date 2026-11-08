@@ -1,0 +1,39 @@
+@startuml
+!include ../../common/style.puml
+title BaseProjectBootstrapper — member view
+abstract class BaseProjectBootstrapper {
+  +config : dict
+  +bootstrap(request, config=None, **kw) : ScaffoldResult
+  ..abstract hooks..
+  #_validate_request(request, config, **kw) : bool
+  #_plan_scaffold(request, config, **kw) : List[dict]
+  #_scaffold_structure(request, config, project_root, **kw)
+  #_generate_build_manifest(request, config, **kw) : str
+  #_generate_git_config(request, config, **kw) : Dict[str, str]
+  #_generate_env_templates(request, config, **kw) : Dict[str, str]
+  #_generate_readme_scaffold(request, config, **kw) : str
+  #_generate_docker_config(request, config, **kw) : Dict[str, str]
+  ..protected defaults..
+  #_resolve_config(request, config, **kw) : ScaffoldRequest
+  #_generate_dependency_config(request, config, **kw) : str | None
+  #_dependency_file_name(request) : str
+  #_generate_license(request, config, **kw) : str | None
+  #_generate_makefile(request, config, **kw) : str | None
+  #_validate_output(result, config, **kw) : bool
+  #_handle_error(error, request, result, config, **kw) : ScaffoldResult
+  ..private — framework-owned..
+  -__load_json_config(config_path) : ScaffoldRequest
+  -__load_prompt_config(prompt, config) : ScaffoldRequest
+  -__write_file(project_root, relative_path, content) : str
+  -__create_directory(path)
+  -__generate_scaffold_key(request) : str
+  -__not_owner(claim, key, result) : ScaffoldResult
+  -__output_base(request, config) : str
+  -__project_dir(request, config) : Path
+  -__is_already_scaffolded(request, config) : bool
+  -__snapshot(root) : set
+  -__resolve_output_path(request, config) : str
+  -__write_build_manifest(request, project_root, content) : str
+  -__build_dev_request(request, a2c_cfg, config, root) : dict
+}
+@enduml

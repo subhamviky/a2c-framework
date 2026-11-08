@@ -1,0 +1,8 @@
+digraph G {
+  graph [rankdir=LR, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>GeneratorAPIRouter — endpoints and routing</b>>, fontcolor="#1F3864", nodesep=0.25, ranksep=0.7, pad=0.2];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=10.5, fontcolor="#1F3864", margin="0.12,0.05"];
+  edge [color="#2E4A6B"];
+  g [label="POST /api/v1/g2c/generate"]; ea [label="POST /e2a/abstract"]; aa [label="POST /a2c/abstract"]; ei [label="POST /e2a/inherited"]; ai [label="POST /a2c/inherited"]; h [label="GET /health"];
+  w [label="DeveloperPlatformWorkflow(config)\n.generate(request, config)", fillcolor="#DCE8F5"]; f [label="GeneratorFactory.create(request, config)\n.generate(request, config)", fillcolor="#DCE8F5"];
+  g->w; ei->w; ai->w; ea->f; aa->f;
+}

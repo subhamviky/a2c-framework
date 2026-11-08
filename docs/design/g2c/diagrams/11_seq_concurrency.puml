@@ -1,0 +1,25 @@
+@startuml
+!include ../../common/style.puml
+title Concurrent generation — claim on g2c:generator_key and shared-artifact ownership
+participant "Run A" as A
+participant "Run B" as B
+participant "Claim store\n(idempotency_store)" as S
+participant "Ownership record\nartifact:<path>" as O
+A -> S : claim(g2c:generator_key, tenant, fingerprint)
+S --> A : CLAIMED
+B -> S : claim(same key)
+S --> B : IN_PROGRESS → status in_progress (no wait)
+A -> O : CAS add reference; created_by = A (fresh)
+A -> A : steps 5–12
+alt success
+  A -> S : complete(deep copy of GeneratorResult) → later callers REPLAY
+else transient / inference rejected / deadline / cancel
+  A -> S : fail(retryable)
+else critic threshold not met
+  A -> S : fail(final)
+else failure after first write
+  A -> S : fail(unknown) → recovery_required
+  A -> O : CAS remove reference
+  note right of O : delete file only if created_by = A,\nreferences empty, not already deleted
+end
+@enduml

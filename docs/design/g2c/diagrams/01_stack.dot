@@ -1,0 +1,19 @@
+digraph G {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>G2C in the framework stack — generators that produce class files</b>>, fontcolor="#1F3864", nodesep=0.35, ranksep=0.45, pad=0.25];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=11, fontcolor="#1F3864", margin="0.16,0.08"];
+  edge [color="#2E4A6B", fontname="DejaVu Sans", fontsize=10];
+  dev [label="Developer / UI\ngenerator-config.json · prompt", fillcolor="#FFFFFF"];
+  api [label="GeneratorAPIRouter\nPOST /api/v1/g2c/*"];
+  aidlc [label="AI-DLC orchestrator\n(Phase A)"];
+  dpw [label="DeveloperPlatformWorkflow.generate()\nchains abstract → inherited", fillcolor="#DCE8F5"];
+  fac [label="GeneratorFactory\ngenerator_type → class"];
+  gens [label="E2AAbstractClassGenerator · A2CAbstractClassGenerator\nE2AInheritedClassGenerator · A2CInheritedClassGenerator\n(BaseGeneratorAgent.generate(), 12 steps)", fillcolor="#DCE8F5"];
+  critic [label="GeneratorCriticAgent\nscore ≥ 0.75", fillcolor="#E6F4F5", color="#0F7C8C"];
+  llm [label="config['llm_service']\nBaseLLMAgentService (E2A T2b)", fillcolor="#E6F4F5", color="#0F7C8C"];
+  p0 [label="P0 bootstrap()\n(inherited generators, steps 7–8)", fillcolor="#E6F4F5", color="#0F7C8C"];
+  out [label="Class files\ncommon/e2a_base.py · a2c_base.py ·\n<agent>.py · scaffolded project", shape=folder, fillcolor="#FFFFFF"];
+  a2c [label="A2C SDLCWorkflow\n(second, explicit phase:\nTerraform · CI/CD)", fillcolor="#FFF8E1", color="#D4A017"];
+  dev -> api -> dpw; dev -> dpw; aidlc -> dpw; dpw -> fac -> gens;
+  gens -> llm [label="_infer()"]; gens -> critic [label="step 9"]; gens -> p0 [label="inline"]; gens -> out;
+  out -> a2c [style=dashed, label="DevRequest\n(not GeneratorRequest)"];
+}

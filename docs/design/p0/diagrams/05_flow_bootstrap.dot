@@ -1,0 +1,26 @@
+digraph G {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>bootstrap() — fixed 16-step sequence</b>>, fontcolor="#1F3864", nodesep=0.25, ranksep=0.18, pad=0.2];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=10.5, fontcolor="#1F3864", margin="0.12,0.04", width=4.6];
+  edge [color="#2E4A6B", fontname="DejaVu Sans", fontsize=9.5];
+  s1 [label="1  _resolve_config()  — only if source = json | prompt"];
+  s2 [label="2  _validate_request()  — False → ValueError"];
+  s3 [label="3  claim p0:scaffold_key (store) → fast-path directory check", fillcolor="#E6F4F5", color="#0F7C8C"];
+  s4 [label="4  _plan_scaffold() → request['scaffold_plan']"];
+  s5 [label="5  __resolve_output_path(); _scaffold_structure()  — first side effect"];
+  s6 [label="6  _generate_build_manifest() + __write_build_manifest()"];
+  s7 [label="7  _generate_dependency_config()  — if not None"];
+  s8 [label="8  _generate_git_config()  — if git_init (default true)"];
+  s9 [label="9  _generate_env_templates()"];
+  s10 [label="10 _generate_readme_scaffold()"];
+  s11 [label="11 _generate_license()  — None for PROPRIETARY"];
+  s12 [label="12 _generate_docker_config()  — if include_docker"];
+  s13 [label="13 _generate_makefile()  — if include_makefile"];
+  s14 [label="14 record structure files; _validate_output()  — False → final"];
+  s15 [label="15 latency SLO  — warn above max_latency_ms (10 000)"];
+  s16 [label="16 log; dev_request if config['a2c'].enabled; settle claim", fillcolor="#E3F1E3", color="#3B7D3B"];
+  skip [label="not owner → replay · in_progress ·\nconflict · recovery_required\nskip → replay + project_root + dev_request", fillcolor="#FFF8E1", color="#D4A017", width=2.6];
+  err [label="_handle_error() → success False\nsettle: retryable (before 5) ·\nUNKNOWN (after 5) · final (14)", fillcolor="#FBE9E7", color="#C0504D", width=2.6];
+  s1->s2->s3->s4->s5->s6->s7->s8->s9->s10->s11->s12->s13->s14->s15->s16;
+  s3 -> skip [label=" not owner /\n already scaffolded"]; s14 -> err [style=dashed, label=" any exception\n (any step)"];
+  {rank=same; s3; skip} {rank=same; s14; err}
+}

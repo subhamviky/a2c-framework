@@ -1,0 +1,34 @@
+@startuml
+!include ../../common/style.puml
+title BaseGeneratorAgent — member view
+abstract class BaseGeneratorAgent {
+  +generator_name / generator_type / critic_type
+  +idempotency : bool = True
+  +MIN_CRITIC_SCORE = 0.75 · MAX_REGENERATIONS = 2
+  +MAX_TOKENS = 32000 · MAX_LATENCY_MS = 60000
+  +generate(request, config=None, **kw) : GeneratorResult
+  ..abstract hooks..
+  #_validate_request(request, config, **kw) : bool
+  #_build_user_prompt(request, config, **kw) : str
+  #_evaluate_output(response, request, config, **kw) : float
+  #_write_output(response, request, config, **kw) : List[str]
+  #_template_output(request, config, **kw) : str
+  ..protected defaults..
+  #_resolve_config(request, config, **kw) : GeneratorRequest
+  #_apply_policy(request, config, **kw)
+  #_existing_output(request, config) : List[str] | None
+  #_prepare(request, config, **kw) : dict
+  #_build_system_prompt(request, config, **kw) : str
+  #_abstract_context(request) : str
+  #_fallback(request, config, **kw) : str
+  #_handle_error(error, request, result, config, status) : GeneratorResult
+  #_critic_review(response, request, config) : float
+  #_write_file(root, path, content) : str
+  #_infer(system, user, request, config, deadline, key, tenant, trace) : str
+  ..private — framework-owned..
+  -__generate_key(request) : str
+  -__track_tokens(texts) : int
+  -__load_prompt_file(filename, config) : str
+  -__write_file(root, path, content) : str
+}
+@enduml

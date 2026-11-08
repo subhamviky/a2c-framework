@@ -1,0 +1,31 @@
+@startuml
+!include ../../common/style.puml
+title e2a_inherited with a generated base and a scaffold
+participant "Caller" as C
+participant "DeveloperPlatform\nWorkflow" as W
+participant "E2AInherited\nClassGenerator" as I
+participant "Claim store" as S
+participant "E2AAbstract\nClassGenerator" as A
+participant "P0" as P
+participant "llm_service" as L
+participant "Critic" as K
+C -> W : generate(request, config)
+W -> I : factory → generate(request, config)
+I -> I : 1–3 resolve · validate · policy
+I -> S : 4 claim g2c:<generator_key>
+S --> I : CLAIMED\n(REPLAY → stored result, stop)
+I -> A : 5–6 generate(abstract request)\nshared per tenant
+A -> L : _infer(E2A specification)
+A -> K : review: 9 classes
+A --> I : common/e2a_base.py\n(or replay)
+I -> P : 7–8 bootstrap(scaffold)
+P --> I : ScaffoldResult\n{project_root, dev_request}
+I -> I : copy base into <project_root>/common/
+I -> L : 9–11 prompt with base
+I -> K : 12 review: base, hooks,\nrun() intact
+I -> I : 13–14 write class;\nSLO; log
+I -> S : complete(result)
+I --> W : GeneratorResult
+W -> W : register base\nreference (CAS)
+W --> C : flat GeneratorResult
+@enduml

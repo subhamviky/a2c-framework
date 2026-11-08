@@ -1,0 +1,13 @@
+digraph G {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>abstract_class_source — three modes</b>>, fontcolor="#1F3864", nodesep=0.4, ranksep=0.45, pad=0.2];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=10.5, fontcolor="#1F3864", margin="0.14,0.06"];
+  edge [color="#2E4A6B", fontname="DejaVu Sans", fontsize=9.5];
+  q [label="abstract_class_source", shape=diamond, fillcolor="#FFFFFF"];
+  g [label="generate (default)\nrun abstract generator first;\nfile placed in common/"];
+  p [label="path\nread abstract_class_path\nas LLM context"];
+  k [label="package\nimport from package_name;\nno file copied"];
+  ctx [label="abstract-class content in system prompt\n→ inherited class with correct import", fillcolor="#DCE8F5"];
+  own [label="May be removed by compensation\nonly if this run created it and\nno other generator_key references it", fillcolor="#FFF8E1", color="#D4A017"];
+  nev [label="Never removed by G2C", fillcolor="#E3F1E3", color="#3B7D3B"];
+  q->g; q->p; q->k; g->ctx; p->ctx; k->ctx; g->own [style=dashed]; p->nev [style=dashed]; k->nev [style=dashed];
+}

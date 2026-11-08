@@ -1,0 +1,10 @@
+digraph G {
+  graph [rankdir=LR, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>Where P0 runs</b>>, fontcolor="#1F3864", nodesep=0.3, ranksep=0.7, pad=0.2];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=10.5, fontcolor="#1F3864", margin="0.14,0.06"];
+  edge [color="#2E4A6B", fontname="DejaVu Sans", fontsize=9.5];
+  ws [label="Developer workstation / CLI\n(local filesystem)"]; ci [label="CI job\n(ephemeral runner)"]; t2 [label="AI-DLC Tier 2 build\n(object-store-backed workspace)", fillcolor="#DCE8F5"];
+  p0 [label="P0 library\nbase_project_bootstrapper.py", fillcolor="#E6F4F5", color="#0F7C8C"];
+  llm [label="BaseLLMAgentService\n(only for source=prompt)"]; st [label="Idempotency store\n(claim/complete/fail surface)", shape=cylinder];
+  a2c [label="A2C SDLCWorkflow\n(BootstrapAndGenerateWorkflow)"];
+  ws -> p0; ci -> p0; t2 -> p0 [label="via G2C"]; p0 -> llm [style=dashed]; p0 -> a2c [style=dashed, label="dev_request"]; p0 -> st [style=dashed, label="claim p0:*"];
+}

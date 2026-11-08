@@ -1,0 +1,25 @@
+@startuml
+!include ../../common/style.puml
+title Concurrent bootstrap — atomic claim of p0:scaffold_key
+participant "Caller A" as A
+participant "Caller B" as B
+participant "Idempotency store\n(scaffold_idempotency_store\nor idempotency_store)" as S
+participant "Filesystem" as FS
+A -> S : claim(p0:scaffold_key, tenant, fingerprint)  — Step 3, before Step 5
+S --> A : CLAIMED
+B -> S : claim(p0:scaffold_key)
+S --> B : IN_PROGRESS → prompt return
+A -> FS : directory check (fast path, only after winning)
+A -> FS : Steps 5–13 write files
+alt Step 14 ok
+  A -> S : complete(deep copy of result incl. dev_request)
+else fails before any write
+  A -> S : fail(retryable)
+else Step 14 validation fails
+  A -> S : fail(final)
+else fails after Step 5 began
+  A -> S : fail(outcome UNKNOWN) — parked for reconciliation
+end
+B -> S : later claim → REPLAY → stored ScaffoldResult, no writes
+note over S : idempotency=False → key p0:scaffold_key#rescaffold:\nserialises deliberate re-scaffolds; settles retryable
+@enduml

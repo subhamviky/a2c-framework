@@ -1,0 +1,21 @@
+digraph G {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>SDLCAgentChain — NFR-first order (default), critic loop, writes last</b>>, fontcolor="#1F3864", nodesep=0.3, ranksep=0.28, pad=0.2];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=10.5, fontcolor="#1F3864", margin="0.14,0.06", width=4.2];
+  edge [color="#2E4A6B", fontname="DejaVu Sans", fontsize=9.5];
+  in [label="DevRequest (validated, tenant_id)", shape=note, fillcolor="#FFFFFF"];
+  r [label="1 RequirementsAgent → spec"];
+  i [label="2 IaCAgent → generated_iac"];
+  o [label="3 CodeGenAgent (observability) → generated_observability"];
+  d [label="4 CICDAgent → generated_cicd"];
+  n [label="5 CodeGenAgent (nfr) → generated_nfr_module"];
+  b [label="6 CodeGenAgent (business) → generated_code"];
+  k [label="7 CodeCriticAgent → critic_report\nmin(model score, NFR pattern score)", fillcolor="#E6F4F5", color="#0F7C8C"];
+  q [label="score ≥ 0.75 ?", shape=diamond, fillcolor="#FFFFFF", width=1.8];
+  w [label="LocalArtifactWriter → project_root\nconditional on the version read at start", fillcolor="#DCE8F5"];
+  ok [label="status GENERATED · outcome COMMITTED", fillcolor="#E3F1E3", color="#3B7D3B"];
+  f [label="CRITIC_THRESHOLD_NOT_MET\nnothing written", fillcolor="#FBE9E7", color="#C0504D", width=2.6];
+  in->r->i->o->d->n->b->k->q; q->w [label="yes"]; w->ok;
+  q->b [style=dashed, label=" no, ≤ 2 regenerations\n with critic findings", constraint=false];
+  q->f [label="no, after 2"];
+  {rank=same; q; f}
+}

@@ -1,0 +1,11 @@
+digraph G {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>Configuration resolution — three sources, one ScaffoldRequest</b>>, fontcolor="#1F3864", nodesep=0.3, ranksep=0.6, pad=0.2];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=10.5, fontcolor="#1F3864", margin="0.14,0.06"];
+  edge [color="#2E4A6B", fontname="DejaVu Sans", fontsize=9.5];
+  i [label="source = inline\n(priority 1)"]; j [label="source = json\nconfig_path → scaffold-config.json"]; p [label="source = prompt\nfree text"];
+  fac [label="ProjectBootstrapperFactory.create()\nresolves first when runtime/build_tool\nare not inline", fillcolor="#E6F4F5", color="#0F7C8C"];
+  lj [label="resolve_scaffold_request()\nJSON ['scaffold'] section;\ninline fields win"]; lp [label="resolve_scaffold_request()\nconfig['llm_service'].process_inference(\nresponse_schema=ScaffoldRequest)\nunknown keys → ValueError"];
+  r [label="ScaffoldRequest\nsource=inline · resolved_from", fillcolor="#DCE8F5"];
+  v [label="_validate_request()"];
+  i -> r; j -> fac; p -> fac; fac -> lj [label="json"]; fac -> lp [label="prompt"]; lj -> r; lp -> r; r -> v;
+}

@@ -1,0 +1,12 @@
+digraph G {
+  graph [fontname="DejaVu Sans", labelloc=t, fontsize=13, label=<<b>Phase Trigger matrix — Axis A (abstract classes) × Axis B (scaffold)</b>>, fontcolor="#1F3864", pad=0.2];
+  node [shape=plaintext, fontname="DejaVu Sans", fontsize=11];
+  t [label=<
+<table border="0" cellborder="1" cellspacing="0" cellpadding="7" color="#1F3864">
+<tr><td bgcolor="#1F3864"><font color="white"><b>Case</b></font></td><td bgcolor="#1F3864"><font color="white"><b>Abstracts</b></font></td><td bgcolor="#1F3864"><font color="white"><b>Scaffold</b></font></td><td bgcolor="#1F3864"><font color="white"><b>1 E2A abs</b></font></td><td bgcolor="#1F3864"><font color="white"><b>2 A2C abs</b></font></td><td bgcolor="#1F3864"><font color="white"><b>3 P0</b></font></td><td bgcolor="#1F3864"><font color="white"><b>4 E2A inh</b></font></td><td bgcolor="#1F3864"><font color="white"><b>5 A2C inh</b></font></td><td bgcolor="#1F3864"><font color="white"><b>6 A2C run (IaC/CI)</b></font></td><td bgcolor="#1F3864"><font color="white"><b>7 Orchestrate</b></font></td></tr>
+<tr><td><b>1A</b></td><td>Reuse</td><td>Reuse</td><td bgcolor="#EEEEEE">Skip</td><td bgcolor="#EEEEEE">Skip</td><td bgcolor="#EEEEEE">Skip</td><td bgcolor="#E3F1E3">Run</td><td bgcolor="#E3F1E3">Run</td><td bgcolor="#FFF8E1">Reuse IaC/CI</td><td bgcolor="#E3F1E3">Run</td></tr>
+<tr><td><b>1B</b></td><td>Generate</td><td>Reuse</td><td bgcolor="#E3F1E3">Run</td><td bgcolor="#E3F1E3">Run</td><td bgcolor="#EEEEEE">Skip</td><td bgcolor="#E3F1E3">Run</td><td bgcolor="#E3F1E3">Run</td><td bgcolor="#FFF8E1">Reuse IaC/CI</td><td bgcolor="#E3F1E3">Run</td></tr>
+<tr><td><b>2A</b></td><td>Reuse</td><td>New</td><td bgcolor="#EEEEEE">Skip</td><td bgcolor="#EEEEEE">Skip</td><td bgcolor="#E3F1E3">Run</td><td bgcolor="#E3F1E3">Run</td><td bgcolor="#E3F1E3">Run</td><td bgcolor="#DCE8F5">Generate fresh</td><td bgcolor="#E3F1E3">Run</td></tr>
+<tr><td><b>2B</b></td><td>Generate</td><td>New</td><td bgcolor="#E3F1E3">Run</td><td bgcolor="#E3F1E3">Run</td><td bgcolor="#E3F1E3">Run</td><td bgcolor="#E3F1E3">Run</td><td bgcolor="#E3F1E3">Run</td><td bgcolor="#DCE8F5">Generate fresh</td><td bgcolor="#E3F1E3">Run</td></tr>
+</table>>];
+}

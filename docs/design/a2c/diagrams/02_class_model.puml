@@ -1,0 +1,38 @@
+@startuml
+!include ../../common/style.puml
+title A2C class model (a2c_base.py)
+package "E2A (e2a_base.py)" {
+  abstract class BaseAgent {
+    +run(state, config, ...) : state
+  }
+  abstract class BaseWorkflow {
+    +execute(state, config) : state
+  }
+}
+class SDLCAssistantAgent <<A2C base agent>> {
+  #_apply_policy() : NFR injection · cloud · key
+}
+class RequirementsAgent
+class CodeGenAgent <<observability · nfr · business>>
+class IaCAgent
+class CICDAgent
+class CodeCriticAgent <<model review ∧ pattern check>>
+class SDLCWorkflow {
+  +execute(dev_request, config) : DevRequest
+}
+class SDLCAgentChain <<node sequence>> {
+  +run(state, config, ...) : state
+}
+class LocalArtifactWriter <<conditional writes>>
+BaseAgent <|-- SDLCAssistantAgent
+SDLCAssistantAgent <|-- RequirementsAgent
+SDLCAssistantAgent <|-- CodeGenAgent
+SDLCAssistantAgent <|-- IaCAgent
+SDLCAssistantAgent <|-- CICDAgent
+BaseAgent <|-- CodeCriticAgent
+BaseWorkflow <|-- SDLCWorkflow
+SDLCWorkflow ..> SDLCAgentChain : _get_agent()
+SDLCAgentChain ..> LocalArtifactWriter
+SDLCAgentChain ..> SDLCAssistantAgent : runs specialists
+SDLCAgentChain ..> CodeCriticAgent : runs
+@enduml

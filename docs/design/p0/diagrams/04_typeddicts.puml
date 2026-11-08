@@ -1,0 +1,56 @@
+@startuml
+!include ../../common/style.puml
+title Data contracts — ScaffoldRequest, ScaffoldResult and the A2C handoff
+class ScaffoldRequest <<TypedDict>> {
+  source : json | prompt | inline
+  resolved_from / tenant_id
+  config_path / prompt
+  runtime / runtime_version
+  platform
+  project_name
+  package_name  «Python»
+  group_id / artifact_id  «Java»
+  build_tool / project_type / packaging
+  dependencies / dev_dependencies
+  spring_boot_version / java_source_version
+  python_requires / output_path / license
+  git_init / include_docker / include_makefile
+  ..written by bootstrap()..
+  scaffold_key / scaffold_plan
+  scaffolded_files / errors
+}
+class ScaffoldResult <<TypedDict>> {
+  success : bool
+  scaffold_key : str
+  project_root : str
+  scaffolded_files : List[str]
+  build_manifest_path : str
+  readme_path : str
+  trace_id : str
+  latency_ms : float
+  errors : List[str]
+  dev_request : dict | None
+  status / replayed
+}
+class "config['a2c']" as A2C <<config block>> {
+  enabled : bool
+  project_type : str
+  mandatory_nfrs : List[str]
+  target_cloud : str
+  context : str
+}
+class DevRequest <<A2C TypedDict>> {
+  project_name ← request.project_name
+  language ← request.runtime
+  target_cloud ← request.platform
+  project_type ← a2c.project_type
+  mandatory_nfrs ← a2c.mandatory_nfrs
+  context ← a2c.context
+  tenant_id ← request / config
+  project_root ← Step 5 root
+}
+ScaffoldRequest ..> ScaffoldResult : bootstrap()
+ScaffoldResult *-- DevRequest : dev_request
+A2C ..> DevRequest : __build_dev_request()
+ScaffoldRequest ..> DevRequest
+@enduml

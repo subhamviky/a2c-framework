@@ -1,0 +1,33 @@
+@startuml
+!include ../../common/style.puml
+title BootstrapAndGenerateWorkflow.execute() — three modes
+participant "Caller" as C
+participant "BootstrapAndGenerate\nWorkflow" as W
+participant "ProjectBootstrapper\nFactory" as F
+participant "Concrete\nbootstrapper" as B
+participant "A2C\n(a2c_base)" as A
+C -> W : execute(request, config, bootstrap_only?, generate_only?)
+alt not generate_only
+  W -> F : create(request, config)
+  F --> W : bootstrapper for (runtime, build_tool)\nelse ValueError
+  W -> B : bootstrap(request, config)
+  B --> W : ScaffoldResult
+  alt not success
+    W --> C : {success: False, errors}
+  else bootstrap_only
+    W --> C : {success: True, scaffold_result}
+  end
+end
+W -> W : dev_request = scaffold_result.dev_request\nor config['a2c_dev_request']
+opt dev_request
+  alt config['a2c'].handoff_only
+    W --> C : generation_result {status: 'ready', dev_request}
+  else
+    W -> A : DevPlatformValidationService.validate('SDLCWorkflow', dev_request)
+    A --> W : ValidationResult (invalid → errors, stop)
+    W -> A : SDLCWorkflow(config).execute(dev_request, config)
+    A --> W : DevRequest (generated_*, critic_report, artifacts)
+  end
+end
+W --> C : {success, scaffold_result, generation_result, errors}
+@enduml

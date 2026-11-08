@@ -1,0 +1,48 @@
+@startuml
+!include ../../common/style.puml
+title Data contracts — GeneratorRequest, GeneratorResult and embedded ScaffoldRequest
+class GeneratorRequest <<TypedDict>> {
+  ..universal..
+  generator_type / source / config_path
+  runtime / runtime_version / platform
+  idempotency / async_mode
+  domain / team / company / output_path
+  tenant_id / deadline_ms
+  ..prompt customisation..
+  system_prompt_additions / user_prompt
+  mandatory_nfrs / optional_nfrs
+  ..abstract generators..
+  base_class_name / abstract_methods
+  class_description
+  ..inherited generators..
+  agent_name / abstract_class_source
+  abstract_class_path / abstract_class_config
+  package_name / scaffold
+  ..model..
+  model_id / critic_model_id
+  fingerprint_exclude
+  ..written by generate()..
+  generator_key / generated_files
+  critic_report / errors
+}
+class GeneratorResult <<TypedDict>> {
+  success / status
+  generator_key
+  generated_files : List[str]
+  abstract_class_path / e2a_abstract_class_path
+  abstract_class_generated_fresh
+  project_root
+  scaffold_result : ScaffoldResult
+  critic_report : {score, missing, passed,
+    attempts, mode}
+  trace_id / latency_ms / errors
+  replayed / retryable
+}
+class ScaffoldRequest <<P0 TypedDict>>
+class ScaffoldResult <<P0 TypedDict>> {
+  dev_request : DevRequest
+}
+GeneratorRequest *-- ScaffoldRequest : scaffold
+GeneratorResult *-- ScaffoldResult : scaffold_result
+GeneratorRequest ..> GeneratorResult : generate()
+@enduml

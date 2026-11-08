@@ -1,0 +1,11 @@
+digraph G {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>_apply_policy() — NFR injection before any model call</b>>, fontcolor="#1F3864", nodesep=0.3, ranksep=0.4, pad=0.2];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=10.5, fontcolor="#1F3864", margin="0.12,0.06"];
+  edge [color="#2E4A6B", fontname="DejaVu Sans", fontsize=9.5];
+  a [label="1  inject missing\nMANDATORY_NFRS\n(log injected list)"];
+  b [label="2  target_cloud in approved_clouds\nand agent in approved_agents ?", shape=diamond, fillcolor="#FFFFFF"];
+  x [label="GovernanceViolationError", fillcolor="#FBE9E7", color="#C0504D"];
+  c [label="3  generation_key =\nproject_name:project_type:\ntarget_cloud"];
+  d [label="continue BaseAgent.run():\n_build_messages → llm_service", fillcolor="#E3F1E3", color="#3B7D3B"];
+  a->b; b->c [label="yes"]; b->x [label="no"]; c->d;
+}

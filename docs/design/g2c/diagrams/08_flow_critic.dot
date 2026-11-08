@@ -1,0 +1,12 @@
+digraph G {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>Critic score routing</b>>, fontcolor="#1F3864", nodesep=0.35, ranksep=0.5, pad=0.2];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=10.5, fontcolor="#1F3864", margin="0.12,0.06"];
+  edge [color="#2E4A6B", fontname="DejaVu Sans", fontsize=9.5];
+  r [label="response"]; k [label="GeneratorCriticAgent.review()\nstructural rules per critic_type\n(ast for Python) + concurrency rules\n→ {score, missing, passed}"];
+  d [label="score ≥ 0.75 ?", shape=diamond, fillcolor="#FFFFFF"];
+  ok [label="write output", fillcolor="#E3F1E3", color="#3B7D3B"];
+  rc [label="retry_count < 2 ?", shape=diamond, fillcolor="#FFFFFF"];
+  fb [label="_fallback() stricter prompt\n→ _infer() again"];
+  er [label="NFRViolationError\n→ _handle_error\nstatus critic_threshold_not_met", fillcolor="#FBE9E7", color="#C0504D"];
+  r->k->d; d->ok [label="yes"]; d->rc [label="no"]; rc->fb [label="yes"]; rc->er [label="no"]; fb->k [style=dashed];
+}

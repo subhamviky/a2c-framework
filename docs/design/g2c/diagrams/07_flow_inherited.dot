@@ -1,0 +1,12 @@
+digraph G {
+  graph [rankdir=LR, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>Inherited generators — internal phases mapped onto the 12-step sequence</b>>, fontcolor="#1F3864", nodesep=0.3, ranksep=0.35, pad=0.2];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=10.5, fontcolor="#1F3864", margin="0.12,0.06"];
+  edge [color="#2E4A6B"];
+  a [label="Setup\n1–4 (base)\nresolve · validate ·\npolicy · claim"];
+  b [label="Abstract class\n5–6 (_prepare)\ngenerate | path |\npackage", fillcolor="#DCE8F5"];
+  c [label="P0 scaffold\n7–8 (_prepare)\nbootstrap(); base\ncopied to common/", fillcolor="#E6F4F5", color="#0F7C8C"];
+  d [label="Logic generation\n9–11\nprompts · _infer()"];
+  e [label="Quality gate\n12\ncritic ≥ 0.75"];
+  f [label="Output\n13–14\nwrite · SLO · log", fillcolor="#E3F1E3", color="#3B7D3B"];
+  a->b->c->d->e->f;
+}

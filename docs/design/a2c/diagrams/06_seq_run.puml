@@ -1,0 +1,29 @@
+@startuml
+!include ../../common/style.puml
+title One A2C request
+participant "Caller" as C
+participant "DevPlatform\nValidationService" as V
+participant "SDLCWorkflow" as W
+participant "Claim store" as S
+participant "SDLCAgentChain" as H
+participant "Agent\n(BaseAgent.run)" as A
+participant "llm_service" as L
+participant "LocalArtifact\nWriter" as T
+C -> V : validate(dev_request)
+V --> C : ValidationResult{valid, errors}
+C -> W : execute(dev_request, config)
+W -> S : claim a2c:<key>
+S --> W : CLAIMED\n(REPLAY → stop)
+W -> H : run(state, config, ...)
+loop NFR-first steps
+  H -> A : run(state)
+  A -> A : policy; messages
+  A -> L : process_inference()
+  A -> A : _evaluate_output()
+end
+H -> T : conditional writes
+T --> H : COMMITTED /\nCONFLICT
+H --> W : state + response
+W -> S : settle
+W --> C : DevRequest
+@enduml

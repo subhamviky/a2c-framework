@@ -1,0 +1,40 @@
+@startuml
+!include ../../common/style.puml
+title DevRequest — fields and who writes them
+class DevRequest <<TypedDict>> {
+  ..developer / P0 handoff..
+  project_name : str
+  project_type : str
+  mandatory_nfrs : List[str]
+  context : str
+  target_cloud : str
+  language : str
+  tenant_id «required»
+  project_root «P0 workspace»
+  .._apply_policy()..
+  mandatory_nfrs += MANDATORY_NFRS
+  generation_key : name:type:cloud
+  ..BaseAgent.run()..
+  request_id / trace_id
+  ..agents..
+  spec «RequirementsAgent»
+  generated_observability / generated_nfr_module
+  generated_code «CodeGenAgent»
+  generated_iac «IaCAgent»
+  generated_cicd «CICDAgent»
+  critic_report «CodeCriticAgent»
+  artifacts {path: sha256} / agent_scores
+  status / errors : List[str]
+}
+class "MANDATORY_NFRS" as M <<policy constant>> {
+  Idempotency
+  Observability
+  CircuitBreaker
+  RetryWithBackoff
+  HealthCheck
+  GracefulShutdown
+}
+class GeneratorRequest <<G2C — not interchangeable>>
+M ..> DevRequest : injected
+DevRequest .. GeneratorRequest : distinct
+@enduml

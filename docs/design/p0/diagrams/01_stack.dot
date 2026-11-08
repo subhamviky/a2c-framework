@@ -1,0 +1,16 @@
+digraph G {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>Where P0 sits — composable sibling of A2C, invoked inline by G2C</b>>, fontcolor="#1F3864", nodesep=0.4, ranksep=0.5, pad=0.25];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=11, fontcolor="#1F3864", margin="0.16,0.08"];
+  edge [color="#2E4A6B", fontname="DejaVu Sans", fontsize=10];
+  dev [label="Developer / CI\n(JSON · prompt · inline)", fillcolor="#FFFFFF"];
+  g2c [label="G2C E2AInheritedClassGenerator /\nA2CInheritedClassGenerator\n(phases 7–8: P0 inline)"];
+  aidlc [label="AI-DLC orchestrator\n(Phase A via G2C)"];
+  bag [label="BootstrapAndGenerateWorkflow\nexecute(request, config,\nbootstrap_only | generate_only)", fillcolor="#DCE8F5"];
+  p0 [label="P0 — BaseProjectBootstrapper.bootstrap()\nvia ProjectBootstrapperFactory", fillcolor="#DCE8F5"];
+  a2c [label="A2C — SDLCWorkflow / SDLCAssistantAgent\n(code · IaC · CI/CD)", fillcolor="#E6F4F5", color="#0F7C8C"];
+  out [label="Workspace on disk\nmanifest · tree · git · env · README ·\nLICENSE · Dockerfile · Makefile", shape=folder, fillcolor="#FFFFFF"];
+  dr [label="ScaffoldResult.dev_request\n(when config['a2c'].enabled)", shape=note, fillcolor="#FFF8E1", color="#D4A017"];
+  dev -> bag; dev -> p0 [label="standalone"]; aidlc -> g2c -> p0 [label="inline"];
+  bag -> p0 [label="1"]; bag -> a2c [label="2 (unless bootstrap_only)"];
+  p0 -> out; p0 -> dr; dr -> a2c [style=dashed, label="handoff"];
+}
