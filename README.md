@@ -197,7 +197,7 @@ result = workflow.execute(request, config)
 
 ### Four Generator Classes, One Unified Entry Point:
 
-`E2AAbstractClassGenerator` emits the full E2A abstract set — now nine classes including `BaseLLMAgentService` — so generated agents get `config['llm_service']` delegation by construction. A repository that already holds an older `e2a_base.py` (no `BaseLLMAgentService`) should be treated as stale and regenerated before reuse; see [`docs/G2C_Phase_Trigger_Decision_Reference.pdf`](docs/G2C_Phase_Trigger_Decision_Reference.pdf).
+`E2AAbstractClassGenerator` emits the full E2A abstract set — now nine classes including `BaseLLMAgentService` — so generated agents get `config['llm_service']` delegation by construction. A repository that already holds an older `e2a_base.py` (no `BaseLLMAgentService`) should be treated as stale and regenerated before reuse; see [`docs/G2C_PHASE_TRIGGER_DECISION_REFERENCE.md`](docs/G2C_PHASE_TRIGGER_DECISION_REFERENCE.md).
 
 
 | Generator Class | Output Generated | P0 Scaffold Included? |
@@ -230,7 +230,7 @@ result = workflow.generate({
 
 **Runtime-Agnostic Compilation:** Generator classes are written in Python; generated output is Python, Java 21, Node.js, or Go based on `request['runtime']`. Zero generator code modifications are needed per runtime target.
 
-*See [`docs/G2C_Framework_Reference.pdf`](docs/G2C_Framework_Reference.pdf) for the full specification and [`docs/G2C_Phase_Trigger_Decision_Reference.pdf`](docs/G2C_Phase_Trigger_Decision_Reference.pdf) for which phases to run or skip for a given repository state.*
+*See [`docs/G2C_FRAMEWORK_REFERENCE.md`](docs/G2C_FRAMEWORK_REFERENCE.md) for the full specification and [`docs/G2C_PHASE_TRIGGER_DECISION_REFERENCE.md`](docs/G2C_PHASE_TRIGGER_DECISION_REFERENCE.md) for which phases to run or skip for a given repository state.*
 
 ---
 
@@ -239,7 +239,8 @@ result = workflow.generate({
 ```
 a2c-framework/
 ├── README.md · LICENSE
-├── docs/                          A2C, G2C, G2C phase-trigger and P0 reference documents (.pdf)
+├── docs/                          A2C, G2C, G2C phase-trigger and P0 reference documents (.md, with Word copies)
+│   └── design/                    HLD and LLD design documents with diagrams (p0/, g2c/, a2c/)
 ├── a2c_base.py                    A2C — DevRequest, SDLCAssistantAgent and specialists,
 │                                  CodeCriticAgent, SDLCWorkflow, validation service, tools
 ├── base_project_bootstrapper.py   P0 — project bootstrap, BootstrapAndGenerateWorkflow
@@ -278,10 +279,11 @@ All of them use in-memory test doubles; nothing has been validated against a liv
 
 | Document | Covers |
 | :--- | :--- |
-| [A2C Framework Reference](docs/A2C%20Framework%20Reference.pdf) | Multi-agent SDLC workflow, NFR injection, critic gates |
-| [G2C Framework Reference](docs/G2C_Framework_Reference.pdf) | Generator classes and the unified `generate()` entry point |
-| [G2C Phase Trigger Decision Reference](docs/G2C_Phase_Trigger_Decision_Reference.pdf) | Which of the seven phases run or skip for a given repository state |
-| [P0 Project Bootstrap Reference](docs/P0_ProjectBootstrap_Framework_Reference.pdf) | `bootstrap()`, `scaffold-config.json`, directory trees per runtime |
+| [A2C Framework Reference](docs/A2C_FRAMEWORK_REFERENCE.md) | Multi-agent SDLC workflow, NFR injection, critic gates |
+| [G2C Framework Reference](docs/G2C_FRAMEWORK_REFERENCE.md) | Generator classes and the unified `generate()` entry point |
+| [G2C Phase Trigger Decision Reference](docs/G2C_PHASE_TRIGGER_DECISION_REFERENCE.md) | Which of the seven phases run or skip for a given repository state |
+| [P0 Project Bootstrap Reference](docs/P0_FRAMEWORK_REFERENCE.md) | `bootstrap()`, `scaffold-config.json`, directory trees per runtime |
+| [Design documents](docs/design/README.md) | HLD and LLD with diagrams for P0, G2C and A2C |
 
 ---
 
