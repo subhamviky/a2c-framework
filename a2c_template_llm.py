@@ -200,7 +200,7 @@ def _a2c_code(messages, ctx):
     else:
         mode = 'business'
     package = _find(r'Java package: (\S+)', user)
-    template = read_template(f'code/{language}/{CODE_FILES[language][mode]}')
+    template = read_template(f'code/{language}/{CODE_FILES[language][mode]}.tmpl')
     return _render(template, _values(project, cloud, package))
 
 

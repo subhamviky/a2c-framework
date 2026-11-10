@@ -13,6 +13,7 @@
 
 import os
 import json
+import re
 import uuid
 import time
 import logging
@@ -397,6 +398,13 @@ class BaseProjectBootstrapper(ABC):
                 if mk:
                     result['scaffolded_files'].append(self.__write_file(root, 'Makefile', mk))
 
+            # Step 13b — starter source, tests, CI, dev container (optional hook)
+            if request.get('include_starter', True):
+                for fname, content in self._generate_starter_files(
+                    request, config, **kwargs
+                ).items():
+                    result['scaffolded_files'].append(self.__write_file(root, fname, content))
+
             # Record files created outside __write_file (package markers etc. made by
             # _scaffold_structure) so scaffolded_files describes the whole workspace.
             listed = set(result['scaffolded_files'])
@@ -622,6 +630,16 @@ class BaseProjectBootstrapper(ABC):
         """
         return None
 
+    def _generate_starter_files(self, request, config=None, **kwargs) -> Dict[str, str]:
+        """
+        Starter files that make the scaffold runnable on day zero: the
+        application entry point, a first test, the CI workflow, a dev
+        container and a compose file. Returns {relative_path: content}.
+        Default: none. Override per runtime. Skipped when
+        request['include_starter'] is False.
+        """
+        return {}
+
     def _validate_output(self, result, config=None, **kwargs) -> bool:
         """
         Confirm required files were created.
@@ -771,6 +789,41 @@ class BaseProjectBootstrapper(ABC):
         return dev
 
 
+_REQ = re.compile(r'^\s*([A-Za-z0-9_.\-]+)\s*(?:\[([^\]]*)\])?\s*(.*)$')
+
+
+def _dependency_name(spec: str) -> str:
+    m = _REQ.match(spec)
+    return (m.group(1) if m else spec).lower()
+
+
+def _with_defaults(specs: List[str], defaults: List[str]) -> List[str]:
+    """Add each default dependency the request does not already name."""
+    names = {_dependency_name(d) for d in specs}
+    return list(specs) + [d for d in defaults if _dependency_name(d) not in names]
+
+
+def _poetry_dependency(spec: str) -> str:
+    """One PEP 508 requirement as a Poetry TOML line. Keeps version
+    constraints and extras; 'name @ git+URL@ref' becomes a git source."""
+    if ' @ ' in spec:
+        name, url = (x.strip() for x in spec.split(' @ ', 1))
+        url = url[len('git+'):] if url.startswith('git+') else url
+        ref = None
+        if '@' in url.rsplit('/', 1)[-1]:
+            url, ref = url.rsplit('@', 1)
+        ref_part = f', tag = "{ref}"' if ref else ''
+        return f'"{name}" = {{ git = "{url}"{ref_part} }}'
+    m = _REQ.match(spec)
+    if not m:
+        return f'"{spec.strip()}" = "*"'
+    name, extras, constraint = m.group(1), m.group(2), (m.group(3) or '').strip() or '*'
+    if extras:
+        items = ', '.join(f'"{e.strip()}"' for e in extras.split(',') if e.strip())
+        return f'"{name}" = {{ version = "{constraint}", extras = [{items}] }}'
+    return f'"{name}" = "{constraint}"'
+
+
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║  Concrete Implementation — PythonPoetryBootstrapper                     ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
@@ -844,8 +897,11 @@ class PythonPoetryBootstrapper(BaseProjectBootstrapper):
         version = request.get('runtime_version', '3.12')
         deps    = request.get('dependencies', [])
         dev     = request.get('dev_dependencies', [])
-        deps_toml = '\n'.join(f'{d.split(">=")[0].split("==")[0].strip()} = "*"' for d in deps)
-        dev_toml  = '\n'.join(f'{d.split(">=")[0].split("==")[0].strip()} = "*"' for d in dev)
+        if request.get('project_type', 'fastapi_microservice') == 'fastapi_microservice':
+            deps = _with_defaults(deps, ['fastapi>=0.111', 'uvicorn[standard]>=0.30'])
+            dev = _with_defaults(dev, ['pytest>=8.2', 'httpx>=0.27'])
+        deps_toml = '\n'.join(_poetry_dependency(d) for d in deps)
+        dev_toml  = '\n'.join(_poetry_dependency(d) for d in dev)
         return f'''[tool.poetry]
 name = "{name}"
 version = "0.1.0"
@@ -1022,24 +1078,72 @@ Apache License 2.0 — see [LICENSE](LICENSE)
             'Dockerfile': f'''# Multi-stage Python build — non-root runtime image
 FROM python:{version}-slim AS builder
 WORKDIR /build
-RUN pip install poetry==1.8.3
+RUN apt-get update && apt-get install -y --no-install-recommends git \\
+    && rm -rf /var/lib/apt/lists/* && pip install "poetry>=2.0,<3"
 COPY pyproject.toml poetry.lock* ./
-RUN poetry config virtualenvs.in-project true && poetry install --no-dev --no-interaction
+RUN poetry config virtualenvs.in-project true \\
+    && poetry install --only main --no-root --no-interaction
 
 FROM python:{version}-slim AS runtime
 WORKDIR /app
 RUN groupadd -r appgroup && useradd -r -g appgroup -u 1001 appuser
 COPY --from=builder /build/.venv /app/.venv
 COPY src/ /app/src/
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH" PYTHONPATH="/app/src"
 USER appuser
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \\
-  CMD curl -f http://localhost:8000/health || exit 1
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 CMD ["uvicorn", "{pkg}.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ''',
             '.dockerignore': '.venv\n__pycache__\n*.pyc\n.env\n.git\ntests\n*.md\n'
         }
+
+    def _generate_starter_files(self, request, config=None, **kwargs) -> Dict[str, str]:
+        pkg = request.get('package_name', 'app')
+        name = request.get('project_name', 'App')
+        version = request.get('runtime_version', '3.12')
+        files: Dict[str, str] = {}
+        if request.get('project_type', 'fastapi_microservice') == 'fastapi_microservice':
+            files[f'src/{pkg}/main.py'] = (
+                f'"""{name} - FastAPI entry point (scaffolded by P0)."""\n'
+                'import logging\n\n'
+                'from fastapi import FastAPI\n\n'
+                f'logger = logging.getLogger("{pkg}")\n\n'
+                f'app = FastAPI(title="{name}")\n\n\n'
+                '@app.get("/health")\n'
+                'def health() -> dict[str, str]:\n'
+                '    """Liveness probe used by the container HEALTHCHECK and the platform."""\n'
+                f'    return {{"status": "UP", "service": "{name}"}}\n')
+            files['tests/test_health.py'] = (
+                'from fastapi.testclient import TestClient\n\n'
+                f'from {pkg}.main import app\n\n\n'
+                'def test_health_reports_up() -> None:\n'
+                '    response = TestClient(app).get("/health")\n'
+                '    assert response.status_code == 200\n'
+                '    assert response.json()["status"] == "UP"\n')
+        files['.github/workflows/ci.yml'] = (
+            'name: ci\n\non:\n  push:\n    branches: [main]\n  pull_request:\n\n'
+            'permissions:\n  contents: read\n\n'
+            'jobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n'
+            '      - uses: actions/checkout@v4\n'
+            '      - uses: actions/setup-python@v5\n'
+            f'        with:\n          python-version: "{version}"\n'
+            '      - run: pipx install "poetry>=2.0,<3"\n'
+            '      - run: poetry install --no-interaction\n'
+            '      - run: poetry run pytest -q\n')
+        files['.devcontainer/devcontainer.json'] = json.dumps({
+            'name': name,
+            'image': f'mcr.microsoft.com/devcontainers/python:1-{version}',
+            'postCreateCommand': 'pipx install "poetry>=2.0,<3" && poetry install',
+            'forwardPorts': [8000],
+            'customizations': {'vscode': {'extensions': [
+                'ms-python.python', 'charliermarsh.ruff', 'hashicorp.terraform']}},
+        }, indent=2) + '\n'
+        files['docker-compose.yml'] = (
+            'services:\n  app:\n    build: .\n    ports:\n      - "8000:8000"\n'
+            '    env_file:\n      - path: .env\n        required: false\n')
+        return files
 
     def _generate_makefile(self, request, config=None, **kwargs) -> str:
         pkg = request.get('package_name', 'app')
@@ -1314,6 +1418,78 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 ''',
             '.dockerignore': 'target/\n.git\n*.md\n.idea/\n*.iml\n'
         }
+
+    def _generate_starter_files(self, request, config=None, **kwargs) -> Dict[str, str]:
+        gid = request.get('group_id', 'com.example')
+        name = request.get('project_name', 'App')
+        jv = request.get('java_source_version', '21')
+        path = gid.replace('.', '/')
+        files = {
+            f'src/main/java/{path}/Application.java': (
+                f'package {gid};\n\n'
+                'import org.springframework.boot.SpringApplication;\n'
+                'import org.springframework.boot.autoconfigure.SpringBootApplication;\n\n'
+                f'/** {name} - Spring Boot entry point (scaffolded by P0). */\n'
+                '@SpringBootApplication\n'
+                'public class Application {\n\n'
+                '    public static void main(String[] args) {\n'
+                '        SpringApplication.run(Application.class, args);\n'
+                '    }\n}\n'),
+            f'src/test/java/{path}/ApplicationTests.java': (
+                f'package {gid};\n\n'
+                'import static org.assertj.core.api.Assertions.assertThat;\n\n'
+                'import org.junit.jupiter.api.Test;\n'
+                'import org.springframework.beans.factory.annotation.Autowired;\n'
+                'import org.springframework.boot.test.context.SpringBootTest;\n'
+                'import org.springframework.context.ApplicationContext;\n\n'
+                '@SpringBootTest\n'
+                'class ApplicationTests {\n\n'
+                '    @Autowired\n'
+                '    private ApplicationContext context;\n\n'
+                '    @Test\n'
+                '    void contextLoads() {\n'
+                '        assertThat(context).isNotNull();\n'
+                '    }\n}\n'),
+            '.github/workflows/ci.yml': (
+                'name: ci\n\non:\n  push:\n    branches: [main]\n  pull_request:\n\n'
+                'permissions:\n  contents: read\n\n'
+                'jobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n'
+                '      - uses: actions/checkout@v4\n'
+                '      - uses: actions/setup-java@v4\n'
+                '        with:\n          distribution: temurin\n'
+                f'          java-version: "{jv}"\n          cache: maven\n'
+                '      - run: mvn -B verify\n'),
+            '.devcontainer/devcontainer.json': json.dumps({
+                'name': name,
+                'image': f'mcr.microsoft.com/devcontainers/java:1-{jv}',
+                'features': {'ghcr.io/devcontainers/features/java:1': {
+                    'version': 'none', 'installMaven': 'true'}},
+                'postCreateCommand': 'mvn -B -q dependency:go-offline',
+                'forwardPorts': [8080],
+                'customizations': {'vscode': {'extensions': [
+                    'vscjava.vscode-java-pack', 'vmware.vscode-boot-dev-pack',
+                    'hashicorp.terraform']}},
+            }, indent=2) + '\n',
+            'docker-compose.yml': 'services:\n  app:\n    build: .\n    ports:\n      - "8080:8080"\n',
+        }
+        if 'actuator' in request.get('dependencies', []):
+            files[f'src/test/java/{path}/HealthEndpointTests.java'] = (
+                f'package {gid};\n\n'
+                'import static org.assertj.core.api.Assertions.assertThat;\n\n'
+                'import org.junit.jupiter.api.Test;\n'
+                'import org.springframework.beans.factory.annotation.Autowired;\n'
+                'import org.springframework.boot.test.context.SpringBootTest;\n'
+                'import org.springframework.boot.test.web.client.TestRestTemplate;\n\n'
+                '@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)\n'
+                'class HealthEndpointTests {\n\n'
+                '    @Autowired\n'
+                '    private TestRestTemplate rest;\n\n'
+                '    @Test\n'
+                '    void healthIsUp() {\n'
+                '        String body = rest.getForObject("/actuator/health", String.class);\n'
+                '        assertThat(body).contains("UP");\n'
+                '    }\n}\n')
+        return files
 
     def _generate_makefile(self, request, config=None, **kwargs) -> str:
         return '''.PHONY: install build test run docker-build clean

@@ -18,12 +18,19 @@ Rule sets (critic_type, from config or request['generator_type']):
   (every type)   concurrency rules: no agent-level _validate_state, no own
                  semaphore or rate limiter, no provider SDK import or call
 
-Python output is parsed with ast; other runtimes use patterns. The checks are
+Python output is parsed with ast; other runtimes use patterns. Java output is
+also compiled with `javac` (with the abstract base files the request points
+to) when a JDK is on PATH; a compile error scores 0.0. Disable with
+critic_config['java_compile_check'] = False. The checks are
 structural, not a proof of correctness. Deductions: 0.25 per concurrency
 finding, 0.10 per missing E2A class, 0.15 per missing required element.
 """
 import ast
 import re
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
 
 E2A_CLASSES = ['BaseAgent', 'BaseWorkflow', 'BaseRAGPipeline', 'BaseToolService',
                'BaseLLMAgentService', 'BaseInfraProvisioner', 'BaseObservability',
@@ -31,6 +38,7 @@ E2A_CLASSES = ['BaseAgent', 'BaseWorkflow', 'BaseRAGPipeline', 'BaseToolService'
 A2C_ELEMENTS = ['SDLCAssistantAgent', 'DevRequest', 'SDLCWorkflow', 'CodeCriticAgent', '_apply_policy']
 ENTRY_POINTS = ('run', 'execute', 'retrieve')
 INHERITED_HOOKS = ('_build_messages', '_evaluate_output')
+JAVA_INHERITED_HOOKS = ('buildMessages', 'evaluateOutput')
 
 
 class GeneratorCriticAgent:
@@ -78,6 +86,13 @@ class GeneratorCriticAgent:
             except SyntaxError as e:
                 return self._report(0.0, ctype, ['python syntax error: %s' % e.msg], passed, findings)
 
+        if runtime == 'java' and ctype and self.config.get('java_compile_check', True):
+            error = self._java_compile_error(source, request)
+            if error:
+                return self._report(0.0, ctype, ['java compile error: %s' % error], passed, findings)
+            if error is not None:
+                passed.append('compiles')
+
         if ctype == 'e2a_abstract':
             names = self._class_names(tree, source)
             for c in E2A_CLASSES:
@@ -105,6 +120,36 @@ class GeneratorCriticAgent:
     def _report(score, ctype, missing, passed, findings):
         return {'score': score, 'critic_type': ctype, 'missing': missing + findings,
                 'passed': passed, 'findings': findings}
+
+    @staticmethod
+    def _java_compile_error(source, request):
+        """None when no JDK is available; '' when the source compiles;
+        otherwise the first compiler error line."""
+        javac = shutil.which('javac')
+        if not javac:
+            return None
+        m = re.search(r'\bpublic\s+(?:final\s+|abstract\s+)*class\s+(\w+)', source)
+        if not m:
+            return 'no public class found'
+        with tempfile.TemporaryDirectory() as tmp:
+            files = []
+            for key in ('e2a_abstract_class_path', 'abstract_class_path'):
+                p = request.get(key)
+                if p and Path(p).is_file() and Path(p).suffix == '.java' \
+                        and Path(p).stem != m.group(1):
+                    dst = Path(tmp) / 'base' / Path(p).name
+                    dst.parent.mkdir(exist_ok=True)
+                    dst.write_text(Path(p).read_text(encoding='utf-8'), encoding='utf-8')
+                    files.append(str(dst))
+            own = Path(tmp) / f'{m.group(1)}.java'
+            own.write_text(source, encoding='utf-8')
+            files.append(str(own))
+            proc = subprocess.run([javac, '-d', str(Path(tmp) / 'out')] + files,
+                                  capture_output=True, text=True, timeout=120)
+            if proc.returncode == 0:
+                return ''
+            errors = [l for l in proc.stderr.splitlines() if 'error:' in l]
+            return (errors[0].split('error:', 1)[1].strip() if errors else 'javac failed')
 
     @staticmethod
     def _class_names(tree, source):
@@ -142,7 +187,8 @@ class GeneratorCriticAgent:
                 passed.append(f'extends {want_base}')
             else:
                 missing.append(f'extends {want_base}'); d += self.MISSING_ELEMENT
-        for hook in INHERITED_HOOKS:
+        hooks = JAVA_INHERITED_HOOKS if request.get('runtime') == 'java' else INHERITED_HOOKS
+        for hook in hooks:
             if hook in methods:
                 passed.append(hook)
             else:

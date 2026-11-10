@@ -372,6 +372,9 @@ class BaseGeneratorAgent(ABC):
         path = Path(base) / filename
         if not path.is_absolute() and not path.exists():
             path = _HERE / base / filename
+        if not path.exists() and base == self.PROMPT_DIR:
+            from a2c_assets import PROMPTS_DIR      # installed package layout
+            path = PROMPTS_DIR / filename
         return path.read_text(encoding='utf-8') if path.exists() else ''
 
     @staticmethod

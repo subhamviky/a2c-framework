@@ -32,9 +32,23 @@ def snake(name: str) -> str:
     return out
 
 
+def java_hook(name: str) -> str:
+    """Java name of an E2A hook: '_build_messages' -> 'buildMessages'."""
+    head, *rest = name.lstrip('_').split('_')
+    return head + ''.join(w.capitalize() for w in rest)
+
+
+def java_hooks(kind: str):
+    """Hooks a Java inherited class must implement for its base."""
+    hooks = [java_hook(h) for h in _E2A_ENTRY[0][3]]
+    return [h for h in hooks if h != 'applyPolicy'] if kind == 'a2c_inherited' else hooks
+
+
 # ───────────────────────────────────────────────────────────── E2A abstract
-def e2a_abstract(runtime: str) -> str:
-    return {'python': _e2a_py, 'java': _e2a_java, 'node': _e2a_ts, 'go': _e2a_go}[runtime]()
+def e2a_abstract(runtime: str, package: str = 'com.company.common') -> str:
+    if runtime == 'java':
+        return _e2a_java(package)
+    return {'python': _e2a_py, 'node': _e2a_ts, 'go': _e2a_go}[runtime]()
 
 
 def _e2a_py() -> str:
@@ -72,13 +86,30 @@ def _e2a_py() -> str:
     return '\n'.join(parts).rstrip() + '\n'
 
 
-def _e2a_java() -> str:
+def _e2a_java(package: str = 'com.company.common') -> str:
     body = []
     for cls, entry, arg, hooks in _E2A_ENTRY:
-        hk = '\n'.join(f'        protected abstract Object {h.lstrip("_")}(Map<String, Object> {arg}, Map<String, Object> config);' for h in hooks)
+        names = [java_hook(h) for h in hooks]
+        hk = '\n'.join(f'        protected abstract Object {h}(Map<String, Object> {arg}, Map<String, Object> config);'
+                       for h in names)
+        on_error = (f'                {names[-1]}({arg}, config);\n' if names[-1] == 'handleError'
+                    else f'                throw e;\n')
         body.append(f'''    public abstract static class {cls} {{
+        /** Single public entry point (template method). Never override. */
         public final Map<String, Object> {entry}(Map<String, Object> {arg}, Map<String, Object> config) {{
-            // template method: idempotency, policy, latency SLO enforced here
+            Map<String, Object> cfg = config == null ? new HashMap<>() : config;
+            long start = System.nanoTime();
+            {arg}.putIfAbsent("idempotency_key", UUID.randomUUID().toString());
+            try {{
+                {names[0]}({arg}, cfg);
+                {names[1]}({arg}, cfg);
+            }} catch (RuntimeException e) {{
+                {arg}.put("error", e.getMessage());
+{on_error}            }}
+            double maxSeconds = ((Number) cfg.getOrDefault("max_latency", 30.0)).doubleValue();
+            if ((System.nanoTime() - start) / 1e9 > maxSeconds) {{
+                throw new NFRViolationError("latency SLO breached");
+            }}
             return {arg};
         }}
 {hk}
@@ -93,9 +124,12 @@ def _e2a_java() -> str:
         protected abstract Map<String, Object> dispatchUpstreamCall(List<Map<String, Object>> messages, Map<String, Object> config);
         protected abstract Iterator<String> dispatchUpstreamStream(List<Map<String, Object>> messages, Map<String, Object> config);
     }''')
+    body.append('''    public static class NFRViolationError extends RuntimeException {
+        public NFRViolationError(String message) { super(message); }
+    }''')
     for iface in _E2A_INTERFACES:
         body.append(f'    public interface {iface} {{ void apply(Map<String, Object> state, Map<String, Object> config); }}')
-    return ('package com.company.common;\n\nimport java.util.*;\n\n'
+    return (f'package {package};\n\nimport java.util.*;\n\n'
             '/** E2A base abstract classes — G2C template skeleton. */\n'
             'public final class E2ABase {\n    private E2ABase() {}\n\n' + '\n\n'.join(body) + '\n}\n')
 
@@ -124,20 +158,20 @@ def _e2a_go() -> str:
 
 
 # ───────────────────────────────────────────────────────────── A2C abstract
-def a2c_abstract(runtime: str) -> str:
+def a2c_abstract(runtime: str, package: str = 'com.company.common') -> str:
     if runtime == 'python':
         ref = Path(__file__).resolve().parent / 'a2c_base.py'
         if ref.exists():
             return ref.read_text(encoding='utf-8')
     names = ['DevRequest', 'SDLCAssistantAgent', 'CodeCriticAgent', 'SDLCWorkflow']
     if runtime == 'java':
-        return ('package com.company.common;\n\nimport java.util.*;\n\n/** A2C base classes — G2C template skeleton. */\n'
+        return (f'package {package};\n\nimport java.util.*;\n\n/** A2C base classes — G2C template skeleton. */\n'
                 'public final class A2CBase {\n    private A2CBase() {}\n'
                 '    public static final List<String> MANDATORY_NFRS = List.of("Idempotency", "Observability", "CircuitBreaker", '
                 '"RetryWithBackoff", "HealthCheck", "GracefulShutdown");\n'
                 '    public static class DevRequest extends HashMap<String, Object> {}\n'
                 '    public abstract static class SDLCAssistantAgent extends E2ABase.BaseAgent {\n'
-                '        protected Object _apply_policy(Map<String, Object> state, Map<String, Object> config) { return state; }\n    }\n'
+                '        protected Object applyPolicy(Map<String, Object> state, Map<String, Object> config) { return state; }\n    }\n'
                 '    public abstract static class CodeCriticAgent extends E2ABase.BaseAgent {}\n'
                 '    public abstract static class SDLCWorkflow extends E2ABase.BaseWorkflow {}\n}\n')
     if runtime == 'node':
@@ -152,7 +186,8 @@ def a2c_abstract(runtime: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────── inherited
-def inherited(kind: str, runtime: str, agent: str, import_line: str, nfrs=None) -> str:
+def inherited(kind: str, runtime: str, agent: str, import_line: str, nfrs=None,
+              package: str = None) -> str:
     base = 'SDLCAssistantAgent' if kind == 'a2c_inherited' else 'BaseAgent'
     nfrs = list(nfrs or [])
     if runtime == 'python':
@@ -195,23 +230,26 @@ class {agent}({base}):
         return state
 '''
     if runtime == 'java':
-        return f'''{import_line}
+        bodies = {
+            'buildMessages': 'return List.of(Map.of("role", "system", "content", "You are " + AGENT_NAME + "."));',
+            'applyPolicy': 'return state;',
+            'evaluateOutput': 'return state.containsKey("error") ? 0.0 : 1.0;',
+            'fallback': 'return Map.of("text", "", "degraded", true);',
+            'handleError': 'state.computeIfAbsent("errors", k -> new ArrayList<Object>()); return state;',
+        }
+        methods = '\n\n'.join(
+            f'    @Override\n    protected Object {h}(Map<String, Object> state, Map<String, Object> config) {{\n'
+            f'        {bodies[h]}\n    }}' for h in java_hooks(kind))
+        pkg = f'package {package};\n\n' if package else ''
+        return f'''{pkg}{import_line}
 
 import java.util.*;
 
-/** {agent} — generated by G2C ({kind}). */
+/** {agent} — generated by G2C ({kind}). Template skeleton: fill the hooks. */
 public class {agent} extends {base} {{
     public static final String AGENT_NAME = "{agent}";
 
-    @Override
-    protected Object _build_messages(Map<String, Object> state, Map<String, Object> config) {{
-        return List.of(Map.of("role", "system", "content", "You are {agent}."));
-    }}
-
-    @Override
-    protected Object _evaluate_output(Map<String, Object> state, Map<String, Object> config) {{
-        return 1.0;
-    }}
+{methods}
 }}
 '''
     if runtime == 'node':
@@ -247,7 +285,8 @@ func (a *{agent}) _evaluate_output(response any) float64 {{
 '''
 
 
-def import_line(kind: str, runtime: str, source: str, package_name: str = None) -> str:
+def import_line(kind: str, runtime: str, source: str, package_name: str = None,
+                java_common_package: str = None) -> str:
     base = 'SDLCAssistantAgent' if kind == 'a2c_inherited' else 'BaseAgent'
     mod = 'a2c_base' if kind == 'a2c_inherited' else 'e2a_base'
     if runtime == 'python':
@@ -255,7 +294,7 @@ def import_line(kind: str, runtime: str, source: str, package_name: str = None) 
             else f'from common.{mod} import {base}'
     if runtime == 'java':
         holder = 'A2CBase' if kind == 'a2c_inherited' else 'E2ABase'
-        pkg = package_name if source == 'package' and package_name else 'com.company.common'
+        pkg = package_name if source == 'package' and package_name else (java_common_package or 'com.company.common')
         return f'import {pkg}.{holder}.{base};'
     if runtime == 'node':
         return f"import {{ {base} }} from '{package_name if source == 'package' and package_name else '../common/' + ('a2cBase' if kind == 'a2c_inherited' else 'e2aBase')}';"

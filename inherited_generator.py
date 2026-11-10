@@ -58,8 +58,14 @@ class BaseInheritedClassGenerator(BaseGeneratorAgent):
                     'status': 'scaffold_failed', 'errors': sr.get('errors') or [sr.get('status')],
                     'retryable': sr.get('status') not in ('conflict', 'failed_final')}}
             request['project_root'] = sr.get('project_root')
+            self._place_java_abstracts(request)
         root = request.get('project_root')
-        if root and request['abstract_class_source'] == 'path':
+        if root and request.get('java_common_package'):
+            # Java abstracts already live in the Maven source tree.
+            out['files_before'] += [str(Path(request[k]).resolve())
+                                    for k in ('e2a_abstract_class_path', 'abstract_class_path')
+                                    if request.get(k) and Path(request[k]).is_file()]
+        elif root and request['abstract_class_source'] == 'path':
             for key in ('e2a_abstract_class_path', 'abstract_class_path'):
                 src = request.get(key)
                 if src and Path(src).is_file():
@@ -103,6 +109,32 @@ class BaseInheritedClassGenerator(BaseGeneratorAgent):
         request['abstract_class_source'] = 'path'
         return None
 
+    def _place_java_abstracts(self, request):
+        """Java only: copy the generated abstract files into the Maven source
+        tree as <group_id>.common, so the scaffolded project compiles."""
+        sc = request.get('scaffold_resolved') or {}
+        gid, root = sc.get('group_id'), request.get('project_root')
+        if request.get('runtime') != 'java' or not (gid and root):
+            return
+        package = f'{gid}.common'
+        target = Path(root) / 'src' / 'main' / 'java' / Path(*package.split('.'))
+        for key in ('e2a_abstract_class_path', 'abstract_class_path'):
+            src = request.get(key)
+            if not (src and Path(src).is_file()):
+                continue
+            text = Path(src).read_text(encoding='utf-8')
+            lines = text.splitlines()
+            if lines and lines[0].startswith('package '):
+                lines[0] = f'package {package};'
+            else:
+                lines = [f'package {package};', ''] + lines
+            dst = target / Path(src).name
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+            request[key] = str(dst.resolve())
+        request['java_common_package'] = package
+        request['java_package'] = f'{gid}.service'
+
     def _scaffold(self, request, config):
         """P0 inline. Missing scaffold fields default from the generator
         request; runtime-specific identity (package_name, group_id,
@@ -139,8 +171,10 @@ class BaseInheritedClassGenerator(BaseGeneratorAgent):
 
     def _build_user_prompt(self, request, config=None, **kwargs):
         base = 'SDLCAssistantAgent' if self.kind == 'a2c_inherited' else 'the E2A base class'
+        package = (f"Java package: {request['java_package']}\n"
+                   if request.get('java_package') else '')
         return (f"Generate class {request['agent_name']} extending {base} for runtime "
-                f"{request['runtime']}. Import line: {self._import(request)}\n"
+                f"{request['runtime']}. Import line: {self._import(request)}\n{package}"
                 f"Domain: {request.get('domain', 'general')}. Requirement: {request.get('user_prompt', '')}\n"
                 f"Mandatory NFRs: {request.get('mandatory_nfrs', [])}\n"
                 "Return only the source file.")
@@ -167,9 +201,10 @@ class BaseInheritedClassGenerator(BaseGeneratorAgent):
 
     def _template_output(self, request, config=None, **kwargs):
         return T.inherited(self.kind, request.get('runtime', 'python'), request['agent_name'],
-                           self._import(request), request.get('mandatory_nfrs'))
+                           self._import(request), request.get('mandatory_nfrs'),
+                           package=request.get('java_package'))
 
     def _import(self, request):
         return T.import_line(self.kind, request.get('runtime', 'python'),
                              request.get('abstract_class_source', 'generate'),
-                             request.get('package_name'))
+                             request.get('package_name'), request.get('java_common_package'))
