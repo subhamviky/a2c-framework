@@ -154,4 +154,47 @@ resource "azurerm_container_app" "app" {
 
   identity {
     type         = "UserAssigned"
-    identity_ids = [azurerm_user_assigned_ident
+    identity_ids = [azurerm_user_assigned_identity.app.id]
+  }
+
+  template {
+    min_replicas = 0
+    max_replicas = 3
+    container {
+      name   = "app"
+      image  = var.image
+      cpu    = 0.5
+      memory = "1Gi"
+      env {
+        name  = "SERVICEBUS_NAMESPACE"
+        value = azurerm_servicebus_namespace.app.name
+      }
+      env {
+        name  = "KEY_VAULT_URI"
+        value = azurerm_key_vault.app.vault_uri
+      }
+      liveness_probe {
+        transport = "HTTP"
+        port      = var.container_port
+        path      = var.health_path
+      }
+    }
+  }
+
+  ingress {
+    external_enabled = true
+    target_port      = var.container_port
+    traffic_weight {
+      percentage      = 100
+      latest_revision = true
+    }
+  }
+}
+
+output "app_fqdn" {
+  value = azurerm_container_app.app.ingress[0].fqdn
+}
+
+output "servicebus_queue" {
+  value = azurerm_servicebus_queue.events.name
+}
