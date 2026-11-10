@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "a2c-framework"
+version = "1.1.0"
+description = "A2C, G2C and P0 - governed generation of classes, scaffolds, IaC and CI/CD (reference implementation)"
+readme = "README.md"
+license = "Apache-2.0"
+authors = [{ name = "Subham Gupta" }]
+requires-python = ">=3.11"
+dependencies = [
+    "e2a-framework @ git+https://github.com/subhamviky/e2a-framework.git@v1.1.0",
+]
+
+[project.optional-dependencies]
+api = ["fastapi>=0.111", "httpx>=0.27"]
+
+[project.scripts]
+aidlc-build = "a2c_cli:main"
+
+[project.urls]
+Repository = "https://github.com/subhamviky/a2c-framework"
+
+[tool.setuptools]
+# Flat module names are kept (`from a2c_base import SDLCWorkflow`); data files
+# (prompts, templates) ship in the a2c_assets package.
+py-modules = [
+    "a2c_base",
+    "a2c_cli",
+    "a2c_concurrency",
+    "a2c_abstract_class_generator",
+    "a2c_inherited_class_generator",
+    "a2c_template_llm",
+    "base_generator_agent",
+    "base_project_bootstrapper",
+    "developer_platform_workflow",
+    "e2a_abstract_class_generator",
+    "e2a_inherited_class_generator",
+    "generator_api_router",
+    "generator_critic_agent",
+    "generator_factory",
+    "generator_templates",
+    "inherited_generator",
+    "typedicts",
+]
+packages = ["a2c_assets"]
+
+[tool.setuptools.package-data]
+a2c_assets = ["prompts/*.txt", "templates/**/*"]

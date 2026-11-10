@@ -1,2 +1,7 @@
 __pycache__/
-*.pyc
+*.py[cod]
+build/
+dist/
+*.egg-info/
+.venv/
+.aidlc/

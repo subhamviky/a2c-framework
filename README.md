@@ -256,17 +256,19 @@ a2c-framework/
 ├── smoke_test_aidlc_integration.py   E2A AI-DLC build over the real G2C, P0 and A2C
 ├── scaffold-config-schema.json
 ├── schemas/                       generator-config-schema.json
-├── prompts/                       versioned generator system prompts
+├── a2c_assets/                    prompts/ (versioned generator prompts) and templates/ (template mode)
+├── a2c_template_llm.py · a2c_cli.py   A2C template mode and the `aidlc-build` command
 └── examples/                      scaffold and generator config examples
 ```
 
-Run the tests (the A2C and AI-DLC ones need `e2a-framework/reference` checked out next to this repository, or `E2A_REFERENCE_PATH` set; the router checks need `fastapi` and `httpx`):
+Run the tests (the A2C and AI-DLC ones need `e2a-framework/reference` checked out next to this repository, or `E2A_REFERENCE_PATH` set; the router checks need `fastapi` and `httpx`): 
 
 ```bash
 python smoke_test_generator_concurrency.py
 python smoke_test_g2c_contract.py
 python smoke_test_a2c.py
 python smoke_test_aidlc_integration.py
+python smoke_test_template_mode.py` covers v1.1.0: the G2C Java fix, P0 starters, template mode and `aidlc-build`.
 ```
 
 All of them use in-memory test doubles; nothing has been validated against a live store, a live inference gateway or production load.
