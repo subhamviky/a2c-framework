@@ -46,6 +46,12 @@ for cloud, secret_ref in (('aws', 'TOKEN_SECRET_ARN'), ('gcp', 'secret_key_ref')
 check('A-3 a required setting has no default; Terraform holds no secret value',
       'default' not in tf['settings_variables'].split('setting_api_url')[1].split('}')[0]
       and 'secret_string' not in json.dumps(terraform('aws', S)))
+T = normalize([{'name': 'TABLE_NAME', 'terraform': 'aws_dynamodb_table.recon.name'}])
+check('A-3 a value from the project\'s own Terraform: no variable, the expression in the env',
+      'variable' not in terraform('aws', T)['settings_variables']
+      and 'TABLE_NAME = aws_dynamodb_table.recon.name' in terraform('aws', T)['settings_env'])
+check('A-3 "terraform" excludes a default', refused(
+    lambda: normalize([{'name': 'T', 'terraform': 'x.y', 'default': 'z'}]), SettingsError, 'excludes'))
 ns = {}
 exec(python_module(S), ns)
 check('A-3 load_settings names the missing required settings',
@@ -55,11 +61,11 @@ check('A-3 load_settings applies defaults', ns['load_settings']({'API_URL': 'u',
 # --------------------------------------------------------------- A-5 contracts
 SCHEMA = {'type': 'object', 'required': ['id', 'kind', 'amount'], 'additionalProperties': False,
           'properties': {'id': {'type': 'string', 'format': 'uuid'}, 'kind': {'enum': ['A', 'B']},
-                         'amount': {'type': 'string', 'format': 'decimal'},
+                         'amount': {'type': 'string', 'format': 'decimal'}, 'note': {'type': ['string', 'null']},
                          'line': {'type': 'object', 'required': ['n'], 'properties': {'n': {'type': 'integer'}}}},
           'if': {'properties': {'kind': {'const': 'B'}}}, 'then': {'required': ['line']},
           'else': {'not': {'required': ['line']}},
-          'examples': [{'id': '0b8f6c2e-1d2a-4c3b-9a8e-111111111111', 'kind': 'A', 'amount': '1.50'}]}
+          'examples': [{'id': '0b8f6c2e-1d2a-4c3b-9a8e-111111111111', 'kind': 'A', 'amount': '1.50', 'note': None}]}
 c = Contract('contracts/payment-event.v1.schema.json', SCHEMA)
 ns = {}
 exec(python(c), ns)
@@ -75,7 +81,10 @@ check('A-5 an unsupported keyword is refused by name',
 check('A-5 Java records with Jackson names and enums',
       'record PaymentEvent(' in java(c, 'p')['PaymentEvent.java'] and '@JsonProperty("kind") Kind kind' in
       java(c, 'p')['PaymentEvent.java'] and 'java.math.BigDecimal amount' in java(c, 'p')['PaymentEvent.java'])
-check('A-5 the generated test round-trips the examples', 'test_examples_round_trip' in python_test('pkg', [c]))
+generated = python_test('pkg', [c])
+check('A-5 the generated test round-trips the examples (a Python literal: None, not null)',
+      'test_examples_round_trip' in generated and 'None' in generated and 'null' not in generated)
+compile(generated, 'test_contracts.py', 'exec')
 
 # -------------------------------------------------------- P-5 Maven coordinates
 check('P-5 a starter short name stays a starter', 'spring-boot-starter-web' in maven_dependency('web'))
@@ -133,6 +142,9 @@ with tempfile.TemporaryDirectory() as tmp:
     check('A-6 a file that is not generated is never touched', (repo / 'svc/mine.py').read_text() == 'x = 1\n')
     check('A-6 the manifest now records the new generation',
           json.loads((repo / 'svc/.a2c/manifest.json').read_text())['files']['svc/NEW.md'])
+    again = upgrade(repo / 'svc', fake_build('new'))
+    check('A-6 a second upgrade with nothing new leaves your files alone, without a patch',
+          again['yours'] == [] and not (repo / 'a2c-upgrade.patch').exists())
     check('A-6 without a manifest or a baseline, the upgrade refuses',
           refused(lambda: upgrade(repo / 'other', fake_build('new')), Exception, '--baseline'))
 

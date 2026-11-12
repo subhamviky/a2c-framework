@@ -119,6 +119,8 @@ def upgrade(project_dir: Path, build: Callable[[Dict[str, Any], Path], Dict[str,
             current_hash = sha(current)
             if current_hash == new_hash:
                 report['unchanged'].append(rel)
+            elif old_hash == new_hash:
+                report['unchanged'].append(rel)                  # the generator's output did not change: yours stays
             elif old_hash is not None and current_hash == old_hash:
                 current.write_bytes(fresh.read_bytes())          # untouched by you: replaced
                 report['replaced'].append(rel)

@@ -3,7 +3,8 @@
     "a2c_sdlc": {"settings": [
         {"name": "TABLE_NAME", "default": "reconciliation"},
         {"name": "SETTLEMENT_API_URL"},                     # no default: required at deploy time
-        {"name": "BANK_API_TOKEN", "secret": true}          # a reference to the cloud's secret store
+        {"name": "BANK_API_TOKEN", "secret": true},         # a reference to the cloud's secret store
+        {"name": "TABLE_NAME", "terraform": "aws_dynamodb_table.recon.name"}   # from the project's own Terraform
     ]}
 
 Each setting becomes a Terraform variable, an environment variable of the container or
@@ -38,7 +39,12 @@ def normalize(settings: Any) -> List[Dict[str, Any]]:
         if secret and item.get('default') is not None:
             raise SettingsError(f'secret {name} cannot have a default: its value lives in the secret store')
         default = item.get('default')
+        expression = item.get('terraform')
+        if expression is not None and (secret or default is not None):
+            raise SettingsError(f'setting {name}: "terraform" (a value from your own Terraform) excludes '
+                                f'"default" and "secret"')
         out.append({'name': name, 'secret': secret, 'default': None if default is None else str(default),
+                    'terraform': None if expression is None else str(expression),
                     'description': str(item.get('description') or f'App setting {name}.')})
     return out
 
@@ -49,6 +55,11 @@ def var_name(setting: Dict[str, Any]) -> str:
 
 def secret_id(setting: Dict[str, Any]) -> str:
     return setting['name'].lower().replace('_', '-')
+
+
+def value_of(setting: Dict[str, Any]) -> str:
+    """The Terraform expression of a plain setting: its variable, or the project's own expression."""
+    return setting.get('terraform') or f'var.{var_name(setting)}'
 
 
 def _hcl(value: str) -> str:
@@ -63,10 +74,10 @@ def terraform(cloud: str, settings: List[Dict[str, Any]]) -> Dict[str, str]:
     variables = ''.join(
         f'\nvariable "{var_name(s)}" {{\n  type        = string\n  description = {_hcl(s["description"])}\n'
         + (f'  default     = {_hcl(s["default"])}\n' if s['default'] is not None else '')
-        + '}\n' for s in plain)
+        + '}\n' for s in plain if not s.get('terraform'))
     env = resources = arns = ''
     if cloud == 'gcp':
-        env = ''.join(f'      env {{\n        name  = "{s["name"]}"\n        value = var.{var_name(s)}\n      }}\n'
+        env = ''.join(f'      env {{\n        name  = "{s["name"]}"\n        value = {value_of(s)}\n      }}\n'
                       for s in plain)
         env += ''.join(
             f'      env {{\n        name = "{s["name"]}"\n        value_source {{\n          secret_key_ref {{\n'
@@ -82,7 +93,7 @@ def terraform(cloud: str, settings: List[Dict[str, Any]]) -> Dict[str, str]:
             f'  role      = "roles/secretmanager.secretAccessor"\n'
             f'  member    = "serviceAccount:${{google_service_account.app.email}}"\n}}\n\n' for s in secrets)
     elif cloud == 'aws':
-        pairs = [(s['name'], f'var.{var_name(s)}') for s in plain] + \
+        pairs = [(s['name'], value_of(s)) for s in plain] + \
                 [(s['name'] + '_SECRET_ARN', f'aws_secretsmanager_secret.{var_name(s)}.arn') for s in secrets]
         width = max((len(k) for k, _ in pairs), default=0)
         # a blank line first: terraform fmt aligns '=' only within a group of consecutive lines
@@ -94,7 +105,7 @@ def terraform(cloud: str, settings: List[Dict[str, Any]]) -> Dict[str, str]:
             f'  name = "${{local.name}}/{secret_id(s)}"\n  tags = local.tags\n}}\n\n' for s in secrets)
         arns = ''.join(f', aws_secretsmanager_secret.{var_name(s)}.arn' for s in secrets)
     elif cloud == 'azure':
-        env = ''.join(f'      env {{\n        name  = "{s["name"]}"\n        value = var.{var_name(s)}\n      }}\n'
+        env = ''.join(f'      env {{\n        name  = "{s["name"]}"\n        value = {value_of(s)}\n      }}\n'
                       for s in plain)
         env += ''.join(f'      env {{\n        name        = "{s["name"]}"\n        secret_name = "{secret_id(s)}"\n'
                        f'      }}\n' for s in secrets)
@@ -111,7 +122,7 @@ def terraform(cloud: str, settings: List[Dict[str, Any]]) -> Dict[str, str]:
 def terraform_test(cloud: str, settings: List[Dict[str, Any]]) -> Dict[str, str]:
     """Test values for required settings and one assertion per setting."""
     plain = [s for s in settings if not s['secret']]
-    required = [s for s in plain if s['default'] is None]
+    required = [s for s in plain if s['default'] is None and not s.get('terraform')]
     width = max((len(var_name(s)) for s in required), default=0)
     values = ('\n' + ''.join(f'  {var_name(s).ljust(width)} = "test-{s["name"].lower()}"\n' for s in required)
               if required else '')
