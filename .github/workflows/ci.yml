@@ -39,7 +39,7 @@ jobs:
         env:
           E2A_REFERENCE_PATH: ${{ github.workspace }}/e2a-framework/reference
         run: |
-          for t in smoke_test_generator_concurrency smoke_test_g2c_contract smoke_test_a2c smoke_test_aidlc_integration smoke_test_template_mode smoke_test_declarations; do
+          for t in smoke_test_generator_concurrency smoke_test_g2c_contract smoke_test_a2c smoke_test_aidlc_integration smoke_test_template_mode smoke_test_declarations smoke_test_g2c_v12; do
             echo "== $t"
             python "$t.py" | tail -1
             test "${PIPESTATUS[0]}" -eq 0
@@ -124,6 +124,12 @@ jobs:
       - name: Generated settings and contract tests
         working-directory: ${{ runner.temp }}/decl-${{ matrix.cloud }}
         run: PYTHONPATH=src python -m pytest -q tests/test_settings.py tests/test_contracts.py
+      - name: Several agents in one workflow (G2C for E2A v1.2) - the generated tests pass
+        if: matrix.cloud == 'gcp'
+        working-directory: ${{ runner.temp }}
+        run: |
+          aidlc-build --request "${{ github.workspace }}/examples/requests/agents-python.json" --output .
+          cd agents-service && PYTHONPATH=src python -m pytest -q
       - name: Monorepo layout - root workflows pass actionlint
         if: matrix.cloud == 'aws'
         working-directory: ${{ runner.temp }}

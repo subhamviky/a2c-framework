@@ -46,7 +46,7 @@ check('nothing written on critic failure', not os.listdir(d))
 # ---- 3 inherited with scaffold: abstract -> P0 inline -> class in the scaffold
 out = tempfile.mkdtemp()
 wf = DeveloperPlatformWorkflow(config={})       # the constructor AI-DLC uses
-req = {'generator_type': 'e2a_inherited', 'runtime': 'python', 'agent_name': 'RefundAgent',
+req = {'generator_type': 'e2a_inherited', 'runtime': 'python', 'e2a_contract': '1.1', 'agent_name': 'RefundAgent',
        'output_path': out, 'platform': 'aws', 'tenant_id': 't1',
        'scaffold': {'project_name': 'Refunds', 'package_name': 'refunds'}}
 cfg = {'a2c': {'enabled': True, 'project_type': 'FastAPI Microservice'}}
@@ -88,7 +88,7 @@ check('team agent extends SDLCAssistantAgent and adds its NFRs on top',
 
 # ---- 6 package source: no abstract generation, package import
 out6 = tempfile.mkdtemp()
-r = DeveloperPlatformWorkflow().generate({'generator_type': 'e2a_inherited', 'runtime': 'python', 'agent_name': 'PkgAgent',
+r = DeveloperPlatformWorkflow().generate({'generator_type': 'e2a_inherited', 'runtime': 'python', 'e2a_contract': '1.1', 'agent_name': 'PkgAgent',
                                           'output_path': out6, 'abstract_class_source': 'package',
                                           'package_name': 'e2a_framework'}, {})
 check('package source imports from the package and generates no base',
@@ -159,7 +159,7 @@ try:
     check('GET /health', c.get('/api/v1/g2c/health').json() == {'status': 'ok'})
     resp = c.post('/api/v1/g2c/e2a/abstract', json={'runtime': 'node', 'output_path': d9}).json()
     check('POST /e2a/abstract generates', resp['success'] and resp['generated_files'][0].endswith('e2aBase.ts'))
-    resp = c.post('/api/v1/g2c/generate', json={'generator_type': 'e2a_inherited', 'runtime': 'python',
+    resp = c.post('/api/v1/g2c/generate', json={'generator_type': 'e2a_inherited', 'runtime': 'python', 'e2a_contract': '1.1',
                                                'agent_name': 'ApiAgent', 'output_path': d9})
     check('POST /generate chains through the workflow', resp.status_code == 200 and resp.json()['success'])
     check('invalid request -> 400', c.post('/api/v1/g2c/e2a/abstract', json={'runtime': 'cobol', 'output_path': d9}).status_code == 400)

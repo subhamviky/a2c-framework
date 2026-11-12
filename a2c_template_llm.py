@@ -52,13 +52,11 @@ def code_artifact_paths(language: str, project_name: str, package_name: str = No
     if language == 'java' and group_id:
         base = f"src/main/java/{group_id.replace('.', '/')}/generated"
         return {'generated_observability': f'{base}/Observability.java',
-                'generated_nfr_module': f'{base}/NfrSupport.java',
-                'generated_code': f'{base}/{class_prefix(project_name)}Service.java'}
+                'generated_nfr_module': f'{base}/NfrSupport.java'}
     if language == 'python' and package_name:
         base = f'src/{package_name}/generated'
         return {'generated_observability': f'{base}/observability.py',
-                'generated_nfr_module': f'{base}/nfr.py',
-                'generated_code': f'{base}/service.py'}
+                'generated_nfr_module': f'{base}/nfr.py'}
     return {}
 
 
@@ -123,6 +121,10 @@ def _g2c_a2c_abstract(messages, ctx):
 def _g2c_inherited(kind):
     def respond(messages, ctx):
         user = _user(messages)
+        declaration = _find(r'Agent declaration: (\{.*\})', user)
+        if declaration:                         # v1.2 (G-3): the E2A v1.2 contract, from the declaration
+            import g2c_v12
+            return g2c_v12.agent_source(json.loads(declaration), '')
         agent = _find(r'Generate class (\w+)', user, 'GeneratedAgent')
         runtime = _find(r'for runtime (\w+)', user, 'python')
         import_line = _find(r'Import line: (.+)', user, '')

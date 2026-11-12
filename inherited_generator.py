@@ -17,11 +17,13 @@ scaffolding again (the idempotent no-op). Both steps are idempotent in
 their own right (claim or directory check), so they are not treated as the
 first side effect: a later model failure still settles retryable.
 """
+import json
 import shutil
 from pathlib import Path
 
 from base_generator_agent import BaseGeneratorAgent
 import generator_templates as T
+import g2c_v12
 
 _BUILD_TOOL = {'python': 'poetry', 'java': 'maven', 'node': 'npm', 'go': 'go_modules'}
 _FINAL = ('failed_final', 'conflict', 'critic_threshold_not_met')
@@ -31,9 +33,24 @@ class BaseInheritedClassGenerator(BaseGeneratorAgent):
     """Intermediate base for E2A/A2C inherited generators. Not registered."""
     kind = ''                           # 'e2a_inherited' | 'a2c_inherited'
 
+    def _v12(self, request) -> bool:
+        """G-3: a Python E2A agent targets the E2A v1.2 contract unless the request asks for 1.1
+        (A2C's own SDLC agents and Java stay on 1.1)."""
+        v12_possible = request.get('runtime', 'python') == 'python' and self.kind == 'e2a_inherited'
+        default = '1.2' if v12_possible else '1.1'
+        return request.setdefault('e2a_contract', default) == '1.2'
+
     def _validate_request(self, request, config=None, **kwargs):
+        if not request.get('agent_name') and request.get('agents'):
+            first = request['agents'][0]
+            request['agent_name'] = first if isinstance(first, str) else first.get('name')
         if not all(k in request for k in ("runtime", "agent_name", "output_path")):
             return False
+        if self._v12(request):
+            if request.get('runtime', 'python') != 'python' or self.kind != 'e2a_inherited':
+                return False            # E2A v1.2 exists for Python only (e2a-java is wave D)
+            request['abstract_class_source'] = 'package'      # v1.2 code imports the installed e2a package
+            request['package_name'] = 'e2a'
         src = request.get('abstract_class_source', 'generate')
         if src == 'path' and not request.get('abstract_class_path'):
             return False
@@ -171,6 +188,16 @@ class BaseInheritedClassGenerator(BaseGeneratorAgent):
 
     def _build_user_prompt(self, request, config=None, **kwargs):
         base = 'SDLCAssistantAgent' if self.kind == 'a2c_inherited' else 'the E2A base class'
+        if self._v12(request):
+            spec = next(a for a in g2c_v12.normalize(request)['agents'] if a['name'] == request['agent_name'])
+            return (f"Generate class {request['agent_name']} extending the E2A v1.2 BaseAgent (from e2a import "
+                    "BaseAgent) for runtime python. Each hook declares only what it uses: "
+                    "_prepare(state, ctx, io_read), _build_messages(state, ctx) returning None for no model "
+                    "step, _evaluate_output(response, state, ctx), _fallback(state, ctx), "
+                    "_act(state, ctx, io_modify), _handle_error(error, state, ctx).\n"
+                    f"Agent declaration: {json.dumps(spec)}\n"
+                    f"Domain: {request.get('domain', 'general')}. Requirement: {request.get('user_prompt', '')}\n"
+                    "Return only the source file.")
         package = (f"Java package: {request['java_package']}\n"
                    if request.get('java_package') else '')
         return (f"Generate class {request['agent_name']} extending {base} for runtime "
@@ -186,6 +213,16 @@ class BaseInheritedClassGenerator(BaseGeneratorAgent):
         rt, agent = request['runtime'], request['agent_name']
         root = request.get('project_root')
         sc = request.get('scaffold_resolved') or {}
+        pkg = sc.get('package_name') or request.get('project_package')
+        if self._v12(request) and root and pkg:
+            # G-1/G-2: the primary agent is the model's (or template's) output; the other agents,
+            # the workflow, governance, validation, tools and tests come from the declaration
+            primary = f"src/{pkg}/agents/{T.snake(agent)}.py"
+            written = [self._write_file(root, primary, response)]
+            for rel, text in g2c_v12.files(request, pkg).items():
+                if rel != primary:
+                    written.append(self._write_file(root, rel, text))
+            return written
         if rt == 'python':
             pkg = sc.get('package_name')
             rel = f"src/{pkg}/agents/{T.snake(agent)}.py" if root and pkg else f"{T.snake(agent)}.py"
@@ -200,6 +237,11 @@ class BaseInheritedClassGenerator(BaseGeneratorAgent):
         return [self._write_file(root or request['output_path'], rel, response)]
 
     def _template_output(self, request, config=None, **kwargs):
+        if self._v12(request):
+            spec = g2c_v12.normalize(request)
+            primary = next(a for a in spec['agents'] if a['name'] == request['agent_name'])
+            sc = request.get('scaffold_resolved') or {}
+            return g2c_v12.agent_source(primary, sc.get('package_name') or 'app')
         return T.inherited(self.kind, request.get('runtime', 'python'), request['agent_name'],
                            self._import(request), request.get('mandatory_nfrs'),
                            package=request.get('java_package'))

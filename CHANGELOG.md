@@ -9,8 +9,20 @@ Requires E2A `v1.2.0`.
 - **Contracts to models (A-5):** `a2c_sdlc.contracts: [path]` generates Pydantic models (`src/<package>/contracts/`) and a test that round-trips the schema's `examples`, or Java records with Jackson names (`<group>/contracts/`). A declared subset of JSON Schema (including the "present only when" `if/then/else` idiom); anything else is refused by name.
 - **Maven coordinates (P-5):** `context.dependencies` entries `group:artifact[:version][@scope]`; short names stay Spring starters.
 - **Monorepo layout (P-6):** `context.repository_layout: monorepo` or `aidlc-build --repository-layout monorepo` moves the generated workflows to the repository root as `<project>-<name>.yml`, scoped with `paths`, job working directories, `hashFiles` and the Maven cache path. The reusable scaffold workflow uses it (it used to park the workflows in `docs/`).
-- **Upgrades (A-6):** every build writes `<project>/.a2c/manifest.json`; `aidlc-build --upgrade <project> [--baseline <dir>]` replaces the files you have not changed, adds new ones, writes `a2c-upgrade.patch` for the files you changed (`git apply --reject`), and never touches anything else.
-- `smoke_test_declarations.py` (29 checks); CI job `declarations` (Terraform fmt and test on three clouds, generated tests, actionlint on a generated monorepo); the Java image of the `images` job now has a contract, a setting, Flyway and H2.
+- **Upgrades (A-6):** every build writes `<project>/.a2c/manifest.json`; `aidlc-build --upgrade <project> [--baseline <dir>]` replaces the files you have not changed, adds new ones, writes `a2c-upgrade.patch` for the files you changed (`git apply --reject`), and never touches anything else. Proven on reconciliation and settlement (both scaffolded with v1.1.0).
+- **Settings from your own Terraform:** `{"name": "TABLE_NAME", "terraform": "aws_dynamodb_table.recon.name"}` (reconciliation's table).
+
+### Added — G2C generates E2A v1.2, several agents at once (design note C-01)
+- **E2A v1.2 contract (G-3):** a Python `e2a_inherited` agent targets E2A v1.2 by default (`harness.e2a_contract`, `"1.1"` still selectable): hooks declare only what they use (`_prepare(state, ctx, io_read)`, `_act(state, ctx, io_modify)`, …), `from e2a import BaseAgent`. Java stays on 1.1 and refuses `1.2` with a clear message (e2a-java is wave D). A2C's own SDLC agents are unchanged.
+- **Several agents (G-1):** `harness.agents`, `harness.workflow` (declared `Step` / `Route` steps) and `harness.governance.stages` generate every agent, the workflow, the governance class (stages and `tool_policy`), the validation service (a validator stub per agent) and the tool stubs (`material` for writes).
+- **Typed hooks (G-2):** `kind: deterministic` → no model step; `reads` → `_prepare` with `io_read`; `writes` → `_act` with `io_modify`; `output_schema` → a Pydantic model that `_evaluate_output` validates. The `approved_agents` check is no longer generated.
+- **Tests (A-8):** `AgentContract` per agent, the conformance rules (strict), and one request through the workflow with the simulated model (X-2). The G2C critic checks the v1.2 hooks and runs `e2a.conformance`.
+
+### Removed
+- **The application-service module (A-4):** `generated/service.py` / `<Project>Service.java` are no longer generated (no project used them); the NFR and observability modules stay and the critic reviews them. A2C runs 6 agent steps instead of 7.
+
+### Also
+- `smoke_test_declarations.py` (32 checks), `smoke_test_g2c_v12.py` (16 checks); CI job `declarations` (Terraform fmt and test on three clouds, generated tests, actionlint on a generated monorepo); the Java image of the `images` job now has a contract, a setting, Flyway and H2.
 
 ## v1.1.2 — Fixes from the Order-to-Cash projects
 

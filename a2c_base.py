@@ -405,7 +405,6 @@ def artifact_paths(state: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, s
     paths = {'spec': 'docs/a2c/spec.md',
              'generated_observability': f'src/generated/observability.{ext}',
              'generated_nfr_module': f'src/generated/nfr.{ext}',
-             'generated_code': f'src/generated/service.{ext}',
              'generated_iac': 'infra/main.tf',
              'generated_cicd': '.github/workflows/a2c-ci.yml'}
     paths.update((config or {}).get('a2c_artifact_paths') or {})
@@ -413,10 +412,12 @@ def artifact_paths(state: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, s
 
 
 # ═══════════════════════════════════════════════════════════════ workflow
+# v1.2 (A-4): no business-service module any more. No project used generated/service.py
+# (or <Project>Service.java); the service's real entry point is its workflow (G2C) and
+# routers. The NFR and observability modules stay, and the critic reviews them.
 NFR_FIRST = [('RequirementsAgent', None), ('IaCAgent', None), ('CodeGenAgent', 'observability'),
-             ('CICDAgent', None), ('CodeGenAgent', 'nfr'), ('CodeGenAgent', 'business'),
-             ('CodeCriticAgent', None)]
-TOPOLOGY = [('RequirementsAgent', None), ('CodeGenAgent', 'business'), ('IaCAgent', None),
+             ('CICDAgent', None), ('CodeGenAgent', 'nfr'), ('CodeCriticAgent', None)]
+TOPOLOGY = [('RequirementsAgent', None), ('CodeGenAgent', 'nfr'), ('IaCAgent', None),
             ('CICDAgent', None), ('CodeCriticAgent', None)]
 
 
@@ -472,7 +473,7 @@ class SDLCAgentChain:
                 and regen < int(cfg['a2c_max_regenerations']):
             regen += 1
             state['regeneration_feedback'] = state['critic_report'].get('missing', [])
-            for name, mode in (('CodeGenAgent', 'business'), ('CodeCriticAgent', None)):
+            for name, mode in (('CodeGenAgent', 'nfr'), ('CodeCriticAgent', None)):
                 state, failed = step(name, mode)
                 if failed:
                     return self._fail(state, failed_keys, base_key, 'AGENT_FAILED')

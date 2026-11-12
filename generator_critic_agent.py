@@ -188,6 +188,16 @@ class GeneratorCriticAgent:
             else:
                 missing.append(f'extends {want_base}'); d += self.MISSING_ELEMENT
         hooks = JAVA_INHERITED_HOOKS if request.get('runtime') == 'java' else INHERITED_HOOKS
+        if request.get('e2a_contract') == '1.2' and request.get('runtime', 'python') == 'python':
+            # v1.2: _evaluate_output is needed only by an agent with a model step
+            hooks = ('_build_messages',) + (('_evaluate_output',) if 'return None' not in source else ())
+            try:
+                from e2a.conformance import check_sources
+                errors = [f for f in check_sources({f'{agent}.py': source}) if f.rule == 'R1']
+            except ImportError:                       # E2A < 1.2 installed: the AST checks below still run
+                errors = []
+            for f in errors:
+                missing.append(f'conformance {f.rule}: {f.where}'); d += self.MISSING_ELEMENT
         for hook in hooks:
             if hook in methods:
                 passed.append(hook)

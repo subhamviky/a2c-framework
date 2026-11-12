@@ -26,6 +26,7 @@ from typing import Any, Dict, List
 
 from a2c_assets import read_template
 from a2c_base import MANDATORY_NFRS
+import g2c_v12
 from a2c_contracts import contracts_from
 from a2c_layout import LAYOUTS, move_workflows
 from a2c_upgrade import UpgradeError, clean_request, upgrade, write_manifest
@@ -148,6 +149,15 @@ def _prepare(request: Dict[str, Any], output: Path) -> Dict[str, Any]:
     cloud = a2c.get('target_cloud') or ctx.get('platform', 'aws')
     ctx.setdefault('platform', cloud)
     harness.setdefault('platform', cloud)
+    # v1.2 (G-3): Python code targets E2A v1.2 unless the request says 1.1; Java has no v1.2 runtime yet
+    harness.setdefault('e2a_contract', '1.2' if runtime == 'python'
+                       and harness.get('generator_type', 'e2a_inherited') == 'e2a_inherited' else '1.1')
+    if harness['e2a_contract'] == '1.2' and runtime != 'python':
+        raise ValueError('e2a_contract 1.2 is available for Python only: the Java E2A runtime (e2a-java) is '
+                         'wave D; use "e2a_contract": "1.1" for Java')
+    if harness['e2a_contract'] == '1.2':
+        g2c_v12.normalize(harness)                  # agents / workflow / governance checked up front
+        harness['project_package'] = ctx.get('package_name')
     # v1.2 (A-3): app settings are declared once, in a2c_sdlc; P0 and A2C both read them
     ctx['settings'] = normalize_settings(a2c.get('settings') or ctx.get('settings'))
     a2c['settings'] = ctx['settings']
@@ -235,7 +245,11 @@ def main(argv=None) -> int:
     request['_request_dir'] = str(Path(args.request).resolve().parent)
     if args.repository_layout:
         request.setdefault('context', {})['repository_layout'] = args.repository_layout
-    report = build(request, Path(args.output), args.run_tests)
+    try:
+        report = build(request, Path(args.output), args.run_tests)
+    except ValueError as error:                       # a declaration that cannot be generated
+        print(json.dumps({'success': False, 'errors': [str(error)]}, indent=2))
+        return 1
     print(json.dumps({k: report[k] for k in ('success', 'phase_reached', 'project_root', 'critic_score',
                                              'findings', 'errors', 'llm_usage', 'root_workflows') if k in report},
                      indent=2, default=str))

@@ -99,19 +99,20 @@ root, store, llm = tempfile.mkdtemp(), InMemoryIdempotencyStore(), FakeLLM()
 cfg = {'llm_service': llm, 'idempotency_store': store, 'critic_model_id': 'small-model'}
 r = SDLCWorkflow(config=cfg).execute(dev(root), cfg)
 check('workflow generates', r.get('status') == 'GENERATED' and not r.get('errors'))
-check('NFR-first order: 7 agent runs', llm.calls == 7)
+check('NFR-first order: 6 agent runs (no business-service module since v1.2)', llm.calls == 6)
 check('mandatory NFRs injected before any model call', set(MANDATORY_NFRS) <= set(r['mandatory_nfrs']) and 'Audit' in r['mandatory_nfrs'])
 check('generation_key set by _apply_policy', r['generation_key'] == 'SettlementEngine:FastAPI Microservice:aws')
 check('critic score is min(model, pattern check)', r['critic_report']['score'] == 0.9 and r['critic_report']['pattern_check']['score'] == 1.0)
 check('critic runs on the cheaper model', llm.models[-1] == 'small-model')
 paths = artifact_paths(r, cfg)
 check('artifacts written into the P0 workspace', all(os.path.isfile(os.path.join(root, paths[f])) for f in
-      ('generated_code', 'generated_iac', 'generated_cicd', 'spec')))
+      ('generated_nfr_module', 'generated_iac', 'generated_cicd', 'spec'))
+      and 'generated_code' not in paths)
 check('claim settled SUCCEEDED', store.state_of(r['idempotency_key'], 't1') == 'SUCCEEDED')
 
 # ---- 3 replay: no model call, artifacts in response
 r2 = SDLCWorkflow(config=cfg).execute(dev(root), cfg)
-check('duplicate request replays without a model call', r2.get('replayed') and llm.calls == 7)
+check('duplicate request replays without a model call', r2.get('replayed') and llm.calls == 6)
 check('replay carries the artifacts in response', 'generated_iac' in r2['response'] and r2['response']['status'] == 'GENERATED')
 
 # ---- 4 governance: unapproved cloud never reaches the model
@@ -125,13 +126,13 @@ root5, llm5 = tempfile.mkdtemp(), FakeLLM(weak=1)
 cfg5 = {'llm_service': llm5}
 r = SDLCWorkflow(config=cfg5).execute(dev(root5), cfg5)
 check('comment-only NFRs fail the pattern check', nfr_pattern_report(COMMENT_ONLY, MANDATORY_NFRS)['score'] < 0.5)
-check('one regeneration fixes it', r['status'] == 'GENERATED' and r['critic_report']['regenerations'] == 1 and llm5.calls == 9)
+check('one regeneration fixes it', r['status'] == 'GENERATED' and r['critic_report']['regenerations'] == 1 and llm5.calls == 8)
 
 # ---- 6 never fixed: final failure, nothing written
 root6, llm6 = tempfile.mkdtemp(), FakeLLM(weak='always')
 cfg6 = {'llm_service': llm6, 'idempotency_store': InMemoryIdempotencyStore()}
 r = SDLCWorkflow(config=cfg6).execute(dev(root6), cfg6)
-check('critic below threshold after 2 regenerations', r['status'] == 'CRITIC_THRESHOLD_NOT_MET' and llm6.calls == 11)
+check('critic below threshold after 2 regenerations', r['status'] == 'CRITIC_THRESHOLD_NOT_MET' and llm6.calls == 10)
 check('nothing is written when the critic fails', not any(os.scandir(root6)))
 
 # ---- 7 competing writer: conditional write is a typed conflict

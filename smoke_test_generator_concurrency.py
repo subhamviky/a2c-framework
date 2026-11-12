@@ -189,7 +189,7 @@ tmp = tempfile.mkdtemp()
 store, llm = InMemoryClaimStore(), FakeLLMService()
 wf = DeveloperPlatformWorkflow(artifact_registry=InMemoryArtifactRegistry())
 cfg = {'idempotency_store': store, 'llm_service': llm}
-rq = {'generator_type': 'e2a_inherited', 'runtime': 'python', 'agent_name': 'Refund',
+rq = {'generator_type': 'e2a_inherited', 'runtime': 'python', 'e2a_contract': '1.1', 'agent_name': 'Refund',
       'output_path': tmp + '/', 'tenant_id': 't1'}
 wreq = dict(rq)
 out = wf.generate(wreq, cfg)

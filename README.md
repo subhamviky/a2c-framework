@@ -119,7 +119,7 @@ CodeCriticAgent     ──▶ Model review AND a deterministic NFR-pattern check
 [ DevRequest ]      ──▶ (output: generated_* fields, critic_report, artifacts written into the P0 workspace)
 ```
 
-The agents are implemented in [`a2c_base.py`](a2c_base.py) on top of E2A's `BaseAgent`, `BaseWorkflow`, `BaseToolService` and `BaseValidationService`; `SDLCWorkflow.execute(dev_request, config)` is the entry point. By default the agents run in the NFR-first order of the Reference (Requirements → IaC → CodeGen: observability → CI/CD → CodeGen: NFR module → CodeGen: business logic → Critic); `config['a2c_sequence'] = 'topology'` runs the five agents once each in the order above. A DevRequest is validated by `DevPlatformValidationService` before the workflow starts, and artifacts are written only after the critic passes, each write conditional on the version read at the start of the run.
+The agents are implemented in [`a2c_base.py`](a2c_base.py) on top of E2A's `BaseAgent`, `BaseWorkflow`, `BaseToolService` and `BaseValidationService`; `SDLCWorkflow.execute(dev_request, config)` is the entry point. By default the agents run in the NFR-first order of the Reference (Requirements → IaC → CodeGen: observability → CI/CD → CodeGen: NFR module → Critic; since v1.2 there is no generated business-service module: the service's entry point is its G2C-generated workflow); `config['a2c_sequence'] = 'topology'` runs the five agents once each in the order above. A DevRequest is validated by `DevPlatformValidationService` before the workflow starts, and artifacts are written only after the critic passes, each write conditional on the version read at the start of the run.
 
 Each agent reaches the model through the inherited E2A LLM service (`config['llm_service']`), never a provider SDK. A different model for a specific step — for example a cheaper one for `CodeCriticAgent` — is an explicit per-call argument (`critic.run(state, config, model_id=...)`), not a mutation of shared config.
 
@@ -288,6 +288,30 @@ All of them use in-memory test doubles; nothing has been validated against a liv
 | [Design documents](docs/design/README.md) | HLD and LLD with diagrams for P0, G2C and A2C |
 
 ---
+
+## v1.2 in one request
+
+```jsonc
+{
+  "context": {"project_name": "orders", "runtime": "python", "platform": "gcp", "repository_layout": "monorepo"},
+  "harness": {
+    "agents": [{"name": "RouterAgent", "kind": "model", "output_schema": {...}},
+               {"name": "OrderAgent", "kind": "deterministic", "reads": ["get_price"], "writes": ["submit_payment"]}],
+    "workflow": {"name": "OrderWorkflow", "steps": [{"step": "route", "agent": "RouterAgent"},
+                 {"step": "act", "route_by": "intent", "agents": {"ORDER": "OrderAgent"}, "material": true}]},
+    "governance": {"stages": ["capacity", "token_budget", "firewall", "approval", "redaction"]}
+  },
+  "a2c_sdlc": {
+    "settings": [{"name": "LEDGER_URL"}, {"name": "LEDGER_TOKEN", "secret": true}],
+    "contracts": ["contracts/order-event.v1.schema.json"]
+  }
+}
+```
+
+generates the E2A v1.2 agents, workflow, governance, validation, tool stubs and their tests (G2C);
+settings in Terraform, the runtime and the code; models from the contracts; root workflows for a
+monorepo; and a manifest so that `aidlc-build --upgrade <project>` can bring the scaffold to a later
+A2C version. Examples: [`examples/requests/`](examples/requests/).
 
 ## Compatibility
 

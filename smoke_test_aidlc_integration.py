@@ -41,7 +41,7 @@ from e2a_inmemory_adapters import InMemoryTransactionalStore
 cfg = {'llm_service': LLM(), 'idempotency_store': InMemoryIdempotencyStore(),
        'artifact_store': InMemoryTransactionalStore()}
 req = {'tenant_id': 't1',
-       'harness': {'generator_type': 'e2a_inherited', 'runtime': 'python', 'agent_name': 'SettlementAgent',
+       'harness': {'generator_type': 'e2a_inherited', 'runtime': 'python', 'e2a_contract': '1.1', 'agent_name': 'SettlementAgent',
                    'output_path': out, 'platform': 'aws'},
        'context': {'project_name': 'SettlementEngine', 'package_name': 'settlement_engine', 'runtime': 'python',
                    'build_tool': 'poetry', 'platform': 'aws'},
@@ -62,7 +62,7 @@ check('Phase A: P0 ran inline and the class is inside the scaffold',
       gr['generated_files'][-1].endswith('settlement_engine/agents/settlement_agent.py'))
 check('Phase A: P0 claim does not collide with the orchestrator claim', gr['scaffold_result']['status'] == 'scaffolded')
 check('Phase B: A2C SDLCWorkflow generated and wrote artifacts',
-      sr.get('status') == 'GENERATED' and len(sr.get('artifacts') or {}) == 6)
+      sr.get('status') == 'GENERATED' and len(sr.get('artifacts') or {}) == 5)
 root = gr['scaffold_result']['project_root']
 check('Phase B artifacts are in the P0 workspace', os.path.isfile(os.path.join(root, 'infra', 'main.tf'))
       and os.path.isfile(os.path.join(root, '.github', 'workflows', 'a2c-ci.yml')))
