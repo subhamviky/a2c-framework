@@ -1,0 +1,14 @@
+{
+  "tenant_id": "ci",
+  "context": {"source": "inline", "project_name": "decl-gcp", "package_name": "decl_gcp", "runtime": "python",
+              "runtime_version": "3.12", "build_tool": "poetry", "platform": "gcp",
+              "project_type": "fastapi_microservice"},
+  "harness": {"generator_type": "e2a_inherited", "agent_name": "DeclAgent",
+              "abstract_class_source": "package", "package_name": "e2a_base"},
+  "prompt": {"user_prompt": "Declarations check: settings and a contract."},
+  "a2c_sdlc": {"enabled": true, "project_type": "FastAPI Microservice", "target_cloud": "gcp",
+               "mandatory_nfrs": ["Audit"],
+               "settings": [{"name": "TABLE_NAME", "default": "payments"}, {"name": "LEDGER_API_URL"},
+                            {"name": "LEDGER_API_TOKEN", "secret": true}],
+               "contracts": ["../contracts/payment-event.v1.schema.json"]}
+}

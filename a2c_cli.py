@@ -27,6 +27,8 @@ from typing import Any, Dict, List
 from a2c_assets import read_template
 from a2c_base import MANDATORY_NFRS
 from a2c_contracts import contracts_from
+from a2c_layout import LAYOUTS, move_workflows
+from a2c_upgrade import UpgradeError, clean_request, upgrade, write_manifest
 from a2c_settings import normalize as normalize_settings, terraform as settings_terraform
 from a2c_template_llm import SETTINGS_PLACEHOLDERS, build_template_llm, code_artifact_paths
 from ai_dlc_pipeline import AIDLCPipelineOrchestrator, AIDLCStaticPipeline
@@ -165,6 +167,7 @@ def _prepare(request: Dict[str, Any], output: Path) -> Dict[str, Any]:
 
 
 def build(request: Dict[str, Any], output: Path, run_tests: bool = False) -> Dict[str, Any]:
+    original = clean_request(request)                 # v1.2 (A-6): what the manifest records
     facts = _prepare(request, output)
     root, runtime, cloud = facts['project_root'], facts['runtime'], facts['cloud']
     ctx = request['context']
@@ -195,6 +198,11 @@ def build(request: Dict[str, Any], output: Path, run_tests: bool = False) -> Dic
         'errors': result.get('errors', []),
         'llm_usage': llm.usage_summary(),
     }
+    layout = request['context'].get('repository_layout', 'single')
+    if root.is_dir() and layout == 'monorepo':           # v1.2 (P-6): workflows run from the repository root
+        report['root_workflows'] = move_workflows(Path(output), request['context']['project_name'])
+    if root.is_dir() and report['success']:              # v1.2 (A-6): the manifest --upgrade works from
+        report['manifest'] = str(write_manifest(Path(output), request['context']['project_name'], original))
     if root.is_dir():
         out = root / 'docs' / 'aidlc' / 'build-report.json'
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -204,21 +212,54 @@ def build(request: Dict[str, Any], output: Path, run_tests: bool = False) -> Dic
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog='aidlc-build', description=__doc__.split('\n')[0])
-    parser.add_argument('--request', required=True, help='AIDLCPipelineRequest JSON file')
+    parser.add_argument('--request', help='AIDLCPipelineRequest JSON file (optional with --upgrade: the manifest has it)')
+    parser.add_argument('--upgrade', metavar='PROJECT_DIR',
+                        help='bring an existing scaffold to this A2C version (replaces untouched files, '
+                             'writes a2c-upgrade.patch for files you changed)')
+    parser.add_argument('--baseline', metavar='DIR',
+                        help='with --upgrade: the same request built by the A2C version that scaffolded the project')
     parser.add_argument('--output', default='.', help='directory the project folder is created in')
     parser.add_argument('--run-tests', action='store_true', help='run the generated tests in Phase C')
+    parser.add_argument('--repository-layout', choices=LAYOUTS,
+                        help='monorepo: move the generated workflows to the repository root, scoped to the service')
     parser.add_argument('--verbose', action='store_true')
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO if args.verbose else logging.ERROR, force=True)
     if not args.verbose:
         logging.disable(logging.WARNING)
+    if args.upgrade:
+        return _upgrade(args)
+    if not args.request:
+        parser.error('--request is required (except with --upgrade)')
     request = json.loads(Path(args.request).read_text(encoding='utf-8'))
     request['_request_dir'] = str(Path(args.request).resolve().parent)
+    if args.repository_layout:
+        request.setdefault('context', {})['repository_layout'] = args.repository_layout
     report = build(request, Path(args.output), args.run_tests)
-    print(json.dumps({k: report[k] for k in ('success', 'phase_reached', 'project_root',
-                                             'critic_score', 'findings', 'errors', 'llm_usage')},
+    print(json.dumps({k: report[k] for k in ('success', 'phase_reached', 'project_root', 'critic_score',
+                                             'findings', 'errors', 'llm_usage', 'root_workflows') if k in report},
                      indent=2, default=str))
     return 0 if report['success'] else 1
+
+
+def _upgrade(args) -> int:
+    project = Path(args.upgrade).resolve()
+    request = json.loads(Path(args.request).read_text(encoding='utf-8')) if args.request else None
+    if request is not None and args.repository_layout:
+        request.setdefault('context', {})['repository_layout'] = args.repository_layout
+
+    def rebuild(req, output):
+        req['_request_dir'] = str(project.parent)          # contracts resolve from the repository root
+        return build(req, output)
+
+    try:
+        report = upgrade(project, rebuild, request, Path(args.baseline).resolve() if args.baseline else None)
+    except UpgradeError as error:
+        print(json.dumps({'success': False, 'error': str(error)}, indent=2))
+        return 1
+    print(json.dumps({'success': True, **{k: v for k, v in report.items() if k != 'unchanged'},
+                      'unchanged': len(report['unchanged'])}, indent=2))
+    return 0
 
 
 if __name__ == '__main__':

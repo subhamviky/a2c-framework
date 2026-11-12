@@ -1,6 +1,16 @@
 # Changelog
 
+## v1.2.0 — Declare it in the request; generate for E2A v1.2 (wave C)
 
+Requires E2A `v1.2.0`.
+
+### Added — declarations instead of patches (design note C-02)
+- **App settings (A-3):** `a2c_sdlc.settings: [{name, default?, secret?}]` become Terraform variables, the runtime environment of the container or function and a Terraform test assertion per setting on AWS, GCP and Azure; a line in `.env.example`; `src/<package>/settings.py` (`load_settings()` fails at start-up naming the missing ones) or an `app:` section in Spring's `application.yml`. A secret is declared in the cloud secret store (Secrets Manager, Secret Manager, Key Vault) and referenced; Terraform never holds its value.
+- **Contracts to models (A-5):** `a2c_sdlc.contracts: [path]` generates Pydantic models (`src/<package>/contracts/`) and a test that round-trips the schema's `examples`, or Java records with Jackson names (`<group>/contracts/`). A declared subset of JSON Schema (including the "present only when" `if/then/else` idiom); anything else is refused by name.
+- **Maven coordinates (P-5):** `context.dependencies` entries `group:artifact[:version][@scope]`; short names stay Spring starters.
+- **Monorepo layout (P-6):** `context.repository_layout: monorepo` or `aidlc-build --repository-layout monorepo` moves the generated workflows to the repository root as `<project>-<name>.yml`, scoped with `paths`, job working directories, `hashFiles` and the Maven cache path. The reusable scaffold workflow uses it (it used to park the workflows in `docs/`).
+- **Upgrades (A-6):** every build writes `<project>/.a2c/manifest.json`; `aidlc-build --upgrade <project> [--baseline <dir>]` replaces the files you have not changed, adds new ones, writes `a2c-upgrade.patch` for the files you changed (`git apply --reject`), and never touches anything else.
+- `smoke_test_declarations.py` (29 checks); CI job `declarations` (Terraform fmt and test on three clouds, generated tests, actionlint on a generated monorepo); the Java image of the `images` job now has a contract, a setting, Flyway and H2.
 
 ## v1.1.2 — Fixes from the Order-to-Cash projects
 

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Payment event, version 1 (example contract for A2C's contract-to-model generation)",
+  "type": "object",
+  "required": ["event_id", "event_type", "occurred_at", "amount", "currency"],
+  "additionalProperties": false,
+  "properties": {
+    "event_id": {"type": "string", "format": "uuid"},
+    "event_type": {"enum": ["payment.received", "payment.refunded"]},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "amount": {"type": "string", "format": "decimal", "pattern": "^[0-9]+\\.[0-9]{2}$"},
+    "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "refund": {
+      "type": "object",
+      "required": ["reason"],
+      "additionalProperties": false,
+      "properties": {"reason": {"type": "string", "minLength": 1}}
+    }
+  },
+  "if": {"properties": {"event_type": {"const": "payment.refunded"}}},
+  "then": {"required": ["refund"]},
+  "else": {"not": {"required": ["refund"]}},
+  "examples": [
+    {"event_id": "0b8f6c2e-1d2a-4c3b-9a8e-111111111111", "event_type": "payment.received",
+     "occurred_at": "2026-11-12T10:00:00Z", "amount": "120.00", "currency": "EUR"},
+    {"event_id": "0b8f6c2e-1d2a-4c3b-9a8e-222222222222", "event_type": "payment.refunded",
+     "occurred_at": "2026-11-12T11:00:00Z", "amount": "20.00", "currency": "EUR", "refund": {"reason": "damaged"}}
+  ]
+}

@@ -1,10 +1,45 @@
 {
   "tenant_id": "ci",
-  "context": {"source": "inline", "project_name": "image-java-service", "runtime": "java",
-              "build_tool": "maven", "platform": "azure", "project_type": "spring_boot",
-              "group_id": "com.example.image", "artifact_id": "image-java-service",
-              "dependencies": ["web", "actuator"]},
-  "harness": {"generator_type": "e2a_inherited", "agent_name": "ImageAgent", "abstract_class_source": "generate"},
-  "prompt": {"user_prompt": "Image check for the P0 Java Dockerfile."},
-  "a2c_sdlc": {"enabled": true, "project_type": "Spring Boot", "target_cloud": "azure", "mandatory_nfrs": ["Audit"]}
+  "context": {
+    "source": "inline",
+    "project_name": "image-java-service",
+    "runtime": "java",
+    "build_tool": "maven",
+    "platform": "azure",
+    "project_type": "spring_boot",
+    "group_id": "com.example.image",
+    "artifact_id": "image-java-service",
+    "dependencies": [
+      "web",
+      "actuator",
+      "data-jpa",
+      "org.flywaydb:flyway-core",
+      "com.h2database:h2@runtime"
+    ]
+  },
+  "harness": {
+    "generator_type": "e2a_inherited",
+    "agent_name": "ImageAgent",
+    "abstract_class_source": "generate"
+  },
+  "prompt": {
+    "user_prompt": "Image check for the P0 Java Dockerfile."
+  },
+  "a2c_sdlc": {
+    "enabled": true,
+    "project_type": "Spring Boot",
+    "target_cloud": "azure",
+    "mandatory_nfrs": [
+      "Audit"
+    ],
+    "settings": [
+      {
+        "name": "FEED_URL",
+        "default": "http://localhost:8080"
+      }
+    ],
+    "contracts": [
+      "../contracts/payment-event.v1.schema.json"
+    ]
+  }
 }

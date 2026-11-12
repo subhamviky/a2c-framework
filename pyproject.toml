@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "a2c-framework"
-version = "1.1.2"
+version = "1.2.0"
 description = "A2C, G2C and P0 - governed generation of classes, scaffolds, IaC and CI/CD (reference implementation)"
 readme = "README.md"
 license = "Apache-2.0"
 authors = [{ name = "Subham Gupta" }]
 requires-python = ">=3.11"
 dependencies = [
-    "e2a-framework @ git+https://github.com/subhamviky/e2a-framework.git@v1.1.2",
+    "e2a-framework @ git+https://github.com/subhamviky/e2a-framework.git@v1.2.0",
 ]
 
 [project.optional-dependencies]
@@ -31,7 +31,9 @@ py-modules = [
     "a2c_cli",
     "a2c_concurrency",
     "a2c_contracts",
+    "a2c_layout",
     "a2c_settings",
+    "a2c_upgrade",
     "a2c_abstract_class_generator",
     "a2c_inherited_class_generator",
     "a2c_template_llm",
