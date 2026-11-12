@@ -44,8 +44,8 @@ variable "image" {
 
 variable "container_port" {
   type        = number
-  description = "Port the container listens on."
-  default     = 8080
+  description = "Port the container listens on (the P0 Dockerfile's port)."
+  default     = {{port}}
 }
 
 variable "health_path" {

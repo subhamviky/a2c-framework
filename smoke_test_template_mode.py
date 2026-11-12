@@ -1,4 +1,4 @@
-"""Smoke test for A2C v1.1.0: G2C Java fix + compile-checking critic, P0 starter
+"""Smoke test for A2C v1.1.0 to v1.1.2: G2C Java fix + compile-checking critic, P0 starter
 files, the A2C template LLM and the `aidlc-build` CLI (Python and Java).
 Needs e2a-framework installed (pip install) or E2A_REFERENCE_PATH set.
 Run: python smoke_test_template_mode.py"""
@@ -77,6 +77,20 @@ check('P0 python: Dockerfile installs without the root package and without curl'
 check('P0 python: the venv is built at the path it runs from (/app/.venv), so its scripts find their interpreter',
       'WORKDIR /build' not in (root / 'Dockerfile').read_text()
       and 'COPY --from=builder /app/.venv /app/.venv' in (root / 'Dockerfile').read_text())
+check('P0 python: no hard-coded author', 'authors = []' in manifest and '@' not in manifest.split('authors')[1].split('\n')[0])
+custom = dict(py, project_name='Custom', package_name='custom', authors=['Ada Lovelace <ada@example.org>'], port=8100,
+              include_paths=['policies', 'knowledge'], platform='aws')
+r = ProjectBootstrapperFactory.create(custom).bootstrap(custom)
+croot = Path(r['project_root'])
+docker = (croot / 'Dockerfile').read_text()
+check('P0 python: authors come from the request', 'authors = ["Ada Lovelace <ada@example.org>"]' in (croot / 'pyproject.toml').read_text())
+check('P0 python: one port for EXPOSE, health check and uvicorn',
+      'EXPOSE 8100' in docker and 'localhost:8100/health' in docker and '"--port", "8100"' in docker and '8000' not in docker)
+check('P0 python: include_paths are copied into the image',
+      'COPY policies/ /app/policies/' in docker and 'COPY knowledge/ /app/knowledge/' in docker)
+check('P0 python on aws: lambda_entry.py with Mangum, and mangum is a dependency',
+      'Mangum(app' in (croot / 'src/custom/lambda_entry.py').read_text()
+      and '"mangum"' in (croot / 'pyproject.toml').read_text())
 jv = {'source': 'inline', 'runtime': 'java', 'build_tool': 'maven', 'platform': 'azure',
       'project_name': 'Ledger', 'group_id': 'com.acme', 'artifact_id': 'ledger', 'project_type': 'spring_boot',
       'output_path': str(out), 'dependencies': ['web', 'actuator']}
@@ -127,6 +141,28 @@ for name, request in (
                                              'docs/a2c/spec.md', 'docs/aidlc/build-report.json'))
           and any((root / 'infra' / 'tests').glob('*.tftest.hcl')))
     check(f'aidlc-build {name}: simulated LLM usage recorded', report['llm_usage']['calls'] >= 7)
+    tf = (root / 'infra' / 'main.tf').read_text()
+    port = '8000' if name == 'python' else '8080'
+    check(f'aidlc-build {name}: Terraform container_port equals the Dockerfile port ({port})',
+          f'default     = {port}' in tf and f'EXPOSE {port}' in (root / 'Dockerfile').read_text())
+
+# ---- aidlc-build on AWS: the Lambda handler points at the generated entry module
+aws_request = {'tenant_id': 't1',
+               'context': {'source': 'inline', 'project_name': 'aws-svc', 'package_name': 'aws_svc',
+                           'runtime': 'python', 'build_tool': 'poetry', 'platform': 'aws',
+                           'project_type': 'fastapi_microservice'},
+               'harness': {'generator_type': 'e2a_inherited', 'agent_name': 'DemoAgent',
+                           'abstract_class_source': 'package', 'package_name': 'e2a_base'},
+               'prompt': {'user_prompt': 'demo'},
+               'a2c_sdlc': {'enabled': True, 'project_type': 'FastAPI Microservice',
+                            'target_cloud': 'aws', 'mandatory_nfrs': ['Audit']}}
+report = build(json.loads(json.dumps(aws_request)), Path(tempfile.mkdtemp()))
+aws_root = Path(report['project_root'])
+check('aidlc-build aws: lambda_handler default is the generated lambda_entry.handler',
+      report['success'] and 'default     = "aws_svc.lambda_entry.handler"' in (aws_root / 'infra/main.tf').read_text()
+      and (aws_root / 'src/aws_svc/lambda_entry.py').is_file())
+check('A2C gcp template: max instances is a variable',
+      'max_instance_count = var.max_instances' in __import__('a2c_assets').read_template('terraform/gcp.tf'))
 
 # ---- Phase C has teeth: a planted secret fails the build
 workdir = Path(tempfile.mkdtemp())

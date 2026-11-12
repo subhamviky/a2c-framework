@@ -82,10 +82,13 @@ def _render(template: str, values: Dict[str, str]) -> str:
     return template
 
 
-def _values(project: str, cloud: str = 'aws', java_package: str = None) -> Dict[str, str]:
+def _values(project: str, cloud: str = 'aws', java_package: str = None, port: int = 8080,
+            python_package: str = None) -> Dict[str, str]:
     return {'project': project, 'project_slug': project_slug(project),
             'class_prefix': class_prefix(project), 'cloud': cloud,
-            'java_package': java_package or 'com.example.generated'}
+            'java_package': java_package or 'com.example.generated',
+            'port': str(port),
+            'lambda_handler': f'{python_package}.lambda_entry.handler' if python_package else 'app.handler'}
 
 
 def _nfrs_from(text: str) -> List[str]:
@@ -177,7 +180,9 @@ def _a2c_iac(messages, ctx):
     project = _find(r'Generate Terraform for (.+?) on (?:\w+):', system, 'service')
     cloud = _find(r'Generate Terraform for .+? on (\w+):', system, 'aws').lower()
     cloud = cloud if cloud in ('aws', 'gcp', 'azure') else 'aws'
-    return _render(read_template(f'terraform/{cloud}.tf'), _values(project, cloud))
+    port = int(_find(r'Service port: (\d+)', system, '8080'))           # v1.1.2: the P0 port
+    package = _find(r'Python package: (\w+)', system)
+    return _render(read_template(f'terraform/{cloud}.tf'), _values(project, cloud, port=port, python_package=package))
 
 
 def _a2c_cicd(messages, ctx):

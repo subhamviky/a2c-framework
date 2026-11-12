@@ -43,14 +43,20 @@ variable "image" {
 
 variable "container_port" {
   type        = number
-  description = "Port the container listens on."
-  default     = 8080
+  description = "Port the container listens on (the P0 Dockerfile's port)."
+  default     = {{port}}
 }
 
 variable "health_path" {
   type        = string
   description = "HTTP path of the liveness probe."
   default     = "/health"
+}
+
+variable "max_instances" {
+  type        = number
+  description = "Upper bound of Cloud Run instances (1 while state is kept in memory)."
+  default     = 3
 }
 
 variable "max_delivery_attempts" {
@@ -129,7 +135,7 @@ resource "google_cloud_run_v2_service" "app" {
     service_account = google_service_account.app.email
     scaling {
       min_instance_count = 0
-      max_instance_count = 3
+      max_instance_count = var.max_instances
     }
     containers {
       image = var.image

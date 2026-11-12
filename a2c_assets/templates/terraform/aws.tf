@@ -38,7 +38,7 @@ variable "lambda_package" {
 variable "lambda_handler" {
   type        = string
   description = "Python handler for the API and queue entry points."
-  default     = "app.handler"
+  default     = "{{lambda_handler}}"
 }
 
 variable "max_receive_count" {

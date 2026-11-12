@@ -276,7 +276,10 @@ class IaCAgent(SDLCAssistantAgent):
         return (f'You are a cloud infrastructure engineer. Generate Terraform for '
                 f'{state.get("project_name")} on {state.get("target_cloud")}: container compute, '
                 'load balancer, queue with a dead-letter queue, secrets, network. Variables for '
-                'environment-specific values; no secrets in code. Return only HCL.')
+                'environment-specific values; no secrets in code. Return only HCL.'
+                + (f'\nService port: {state["port"]}' if state.get('port') else '')
+                + (f'\nPython package: {state["package_name"]}'
+                   if state.get('package_name') and state.get('language', 'python') == 'python' else ''))
 
     def _evaluate_output(self, response, state, config=None, **kwargs) -> float:
         text = _strip_fences(_text(response))

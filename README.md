@@ -289,6 +289,16 @@ All of them use in-memory test doubles; nothing has been validated against a liv
 
 ---
 
+## Compatibility
+
+| a2c-framework | e2a-framework | capability-oriented-dsa (used by generated services) |
+|---|---|---|
+| `v1.1.2` | `v1.1.2` | `v0.2.x` |
+| `v1.1.1` | `v1.1.1` | `v0.2.0` |
+| `v1.1.0` | `v1.1.0` | `v0.2.0` |
+
+---
+
 ## 🔗 The Framework Ecosystem
 
 A2C operates as a core pillar of the enterprise generative AI and distributed systems ecosystem:

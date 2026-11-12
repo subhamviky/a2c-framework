@@ -85,6 +85,10 @@ class ScaffoldRequest(TypedDict, total=False):
     git_init:         bool   # True  → generate .gitignore + .gitattributes
     include_docker:   bool   # True  → generate Dockerfile + .dockerignore
     include_makefile: bool   # True  → generate Makefile
+    # v1.1.2
+    authors:          List[str]  # ['Name <email>'] written to pyproject.toml; empty when absent
+    port:             int        # service port: Dockerfile, health check, A2C Terraform (python 8000, java 8080)
+    include_paths:    List[str]  # extra folders copied into the image, e.g. ['policies', 'knowledge']
 
     # ── Written by bootstrapper (do not supply) ──────────────────────────────
     scaffold_key:      str        # idempotency key: name:runtime:build_tool:platform
@@ -780,6 +784,9 @@ class BaseProjectBootstrapper(ABC):
             'target_cloud':   request.get('platform', a2c_cfg.get('target_cloud', 'aws')),
             'language':       request.get('runtime', 'python'),
             'context':        a2c_cfg.get('context', ''),
+            # v1.1.2: one port for Dockerfile and Terraform; the package for the Lambda handler
+            'port':           int(request.get('port', 8080 if request.get('runtime') == 'java' else 8000)),
+            'package_name':   request.get('package_name'),
         }
         tenant = request.get('tenant_id') or config.get('tenant_id')
         if tenant:
@@ -898,15 +905,19 @@ class PythonPoetryBootstrapper(BaseProjectBootstrapper):
         deps    = request.get('dependencies', [])
         dev     = request.get('dev_dependencies', [])
         if request.get('project_type', 'fastapi_microservice') == 'fastapi_microservice':
-            deps = _with_defaults(deps, ['fastapi>=0.111', 'uvicorn[standard]>=0.30'])
+            defaults = ['fastapi>=0.111', 'uvicorn[standard]>=0.30']
+            if request.get('platform') == 'aws':
+                defaults.append('mangum>=0.17')            # Lambda adapter for lambda_entry.py
+            deps = _with_defaults(deps, defaults)
             dev = _with_defaults(dev, ['pytest>=8.2', 'httpx>=0.27'])
         deps_toml = '\n'.join(_poetry_dependency(d) for d in deps)
         dev_toml  = '\n'.join(_poetry_dependency(d) for d in dev)
+        authors   = ', '.join(json.dumps(a) for a in request.get('authors', []))   # v1.1.2: from the request
         return f'''[tool.poetry]
 name = "{name}"
 version = "0.1.0"
 description = ""
-authors = ["Subham Gupta <subhamviky@gmail.com>"]
+authors = [{authors}]
 readme = "README.md"
 packages = [{{include = "{pkg}", from = "src"}}]
 
@@ -1074,6 +1085,9 @@ Apache License 2.0 — see [LICENSE](LICENSE)
     def _generate_docker_config(self, request, config=None, **kwargs) -> Dict[str, str]:
         pkg     = request.get('package_name', 'app')
         version = request.get('runtime_version', '3.12')
+        port    = int(request.get('port', 8000))
+        extra   = ''.join(f'COPY {p.strip("/")}/ /app/{p.strip("/")}/\n'
+                          for p in request.get('include_paths', []))          # v1.1.2: data folders
         return {
             'Dockerfile': f'''# Multi-stage Python build — non-root runtime image
 FROM python:{version}-slim AS builder
@@ -1090,12 +1104,12 @@ WORKDIR /app
 RUN groupadd -r appgroup && useradd -r -g appgroup -u 1001 appuser
 COPY --from=builder /app/.venv /app/.venv
 COPY src/ /app/src/
-ENV PATH="/app/.venv/bin:$PATH" PYTHONPATH="/app/src"
+{extra}ENV PATH="/app/.venv/bin:$PATH" PYTHONPATH="/app/src"
 USER appuser
-EXPOSE 8000
+EXPOSE {port}
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \\
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
-CMD ["uvicorn", "{pkg}.main:app", "--host", "0.0.0.0", "--port", "8000"]
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:{port}/health')" || exit 1
+CMD ["uvicorn", "{pkg}.main:app", "--host", "0.0.0.0", "--port", "{port}"]
 ''',
             '.dockerignore': '.venv\n__pycache__\n*.pyc\n.env\n.git\ntests\n*.md\n'
         }
@@ -1116,6 +1130,13 @@ CMD ["uvicorn", "{pkg}.main:app", "--host", "0.0.0.0", "--port", "8000"]
                 'def health() -> dict[str, str]:\n'
                 '    """Liveness probe used by the container HEALTHCHECK and the platform."""\n'
                 f'    return {{"status": "UP", "service": "{name}"}}\n')
+            if request.get('platform') == 'aws':
+                files[f'src/{pkg}/lambda_entry.py'] = (
+                    '"""AWS Lambda entry point (scaffolded by P0): API Gateway -> FastAPI through Mangum.\n'
+                    'infra/main.tf points var.lambda_handler at this module\'s handler."""\n'
+                    'from mangum import Mangum\n\n'
+                    'from .main import app\n\n'
+                    'handler = Mangum(app, lifespan="off")\n')
             files['tests/test_health.py'] = (
                 'from fastapi.testclient import TestClient\n\n'
                 f'from {pkg}.main import app\n\n\n'
@@ -1137,12 +1158,12 @@ CMD ["uvicorn", "{pkg}.main:app", "--host", "0.0.0.0", "--port", "8000"]
             'name': name,
             'image': f'mcr.microsoft.com/devcontainers/python:1-{version}',
             'postCreateCommand': 'pipx install "poetry>=2.0,<3" && poetry install',
-            'forwardPorts': [8000],
+            'forwardPorts': [int(request.get('port', 8000))],
             'customizations': {'vscode': {'extensions': [
                 'ms-python.python', 'charliermarsh.ruff', 'hashicorp.terraform']}},
         }, indent=2) + '\n'
         files['docker-compose.yml'] = (
-            'services:\n  app:\n    build: .\n    ports:\n      - "8000:8000"\n'
+            f'services:\n  app:\n    build: .\n    ports:\n      - "{int(request.get("port", 8000))}:{int(request.get("port", 8000))}"\n'
             '    env_file:\n      - path: .env\n        required: false\n')
         return files
 
@@ -1399,6 +1420,7 @@ Apache License 2.0 — see [LICENSE](LICENSE)
     def _generate_docker_config(self, request, config=None, **kwargs) -> Dict[str, str]:
         name = request.get('artifact_id', 'app')
         jv   = request.get('java_source_version', '21')
+        port = int(request.get('port', 8080))
         return {
             'Dockerfile': f'''# Multi-stage Java build — non-root runtime image
 FROM eclipse-temurin:{jv}-jdk-alpine AS builder
@@ -1411,10 +1433,11 @@ FROM eclipse-temurin:{jv}-jre-alpine AS runtime
 WORKDIR /app
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup -u 1001
 COPY --from=builder /build/target/*.jar app.jar
+ENV SERVER_PORT={port}
 USER appuser
-EXPOSE 8080
+EXPOSE {port}
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \\
-  CMD wget -q -O- http://localhost:8080/actuator/health || exit 1
+  CMD wget -q -O- http://localhost:{port}/actuator/health || exit 1
 ENTRYPOINT ["java", "-jar", "app.jar"]
 ''',
             '.dockerignore': 'target/\n.git\n*.md\n.idea/\n*.iml\n'

@@ -1,6 +1,28 @@
 # Changelog
 
 
+
+## v1.1.2 — Fixes from the Order-to-Cash projects
+
+### Fixed
+- **P0 author (P-1):** generated `pyproject.toml` no longer hard-codes an author; `context.authors` is written when given, otherwise `authors = []`.
+- **One service port (P-2):** `context.port` (default 8000 for Python, 8080 for Java) drives the Dockerfile's `EXPOSE`, health check and server command, and A2C's Azure/GCP `container_port`. They disagreed before (8000 vs 8080).
+- **AWS Lambda handler (A-1):** the Terraform default is `<package>.lambda_entry.handler`; P0 generates `lambda_entry.py` (Mangum) and adds `mangum` for Python services on AWS.
+- **GCP instances (A-2):** `max_instance_count` is the variable `max_instances` (default 3).
+
+### Added
+- `context.include_paths` (P-3): extra folders copied into the Python image (for example `policies`, `knowledge`).
+- CI job `images` (P-4): generates a Python (GCP) and a Java (Azure) service, builds both images, starts them and probes their health endpoints.
+- Reusable workflow `.github/workflows/aidlc-scaffold.yml` (A-7): projects call it with `uses: subhamviky/a2c-framework/.github/workflows/aidlc-scaffold.yml@v1.1.2` instead of copying it.
+- `examples/requests/`: the two requests the image job builds.
+- `smoke_test_template_mode.py`: 31 checks (authors, port, include paths, Lambda entry, handler default, GCP variable).
+
+### Changed
+- Requires E2A `v1.1.2`.
+
+### Compatibility
+- Requests without the new fields behave as before, except that the author is no longer filled in and the Azure/GCP `container_port` default for Python services is now 8000 (the port the Python image really serves).
+
 ## v1.1.1 — Container and CI upkeep
 
 ### Fixed
