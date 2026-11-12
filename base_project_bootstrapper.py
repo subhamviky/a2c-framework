@@ -1077,7 +1077,8 @@ Apache License 2.0 — see [LICENSE](LICENSE)
         return {
             'Dockerfile': f'''# Multi-stage Python build — non-root runtime image
 FROM python:{version}-slim AS builder
-WORKDIR /build
+# Build where the runtime runs: the venv's scripts hard-code their interpreter path
+WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends git \\
     && rm -rf /var/lib/apt/lists/* && pip install "poetry>=2.0,<3"
 COPY pyproject.toml poetry.lock* ./
@@ -1087,7 +1088,7 @@ RUN poetry config virtualenvs.in-project true \\
 FROM python:{version}-slim AS runtime
 WORKDIR /app
 RUN groupadd -r appgroup && useradd -r -g appgroup -u 1001 appuser
-COPY --from=builder /build/.venv /app/.venv
+COPY --from=builder /app/.venv /app/.venv
 COPY src/ /app/src/
 ENV PATH="/app/.venv/bin:$PATH" PYTHONPATH="/app/src"
 USER appuser
@@ -1126,8 +1127,8 @@ CMD ["uvicorn", "{pkg}.main:app", "--host", "0.0.0.0", "--port", "8000"]
             'name: ci\n\non:\n  push:\n    branches: [main]\n  pull_request:\n\n'
             'permissions:\n  contents: read\n\n'
             'jobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n'
-            '      - uses: actions/checkout@v4\n'
-            '      - uses: actions/setup-python@v5\n'
+            '      - uses: actions/checkout@v6\n'
+            '      - uses: actions/setup-python@v6\n'
             f'        with:\n          python-version: "{version}"\n'
             '      - run: pipx install "poetry>=2.0,<3"\n'
             '      - run: poetry install --no-interaction\n'
@@ -1454,8 +1455,8 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
                 'name: ci\n\non:\n  push:\n    branches: [main]\n  pull_request:\n\n'
                 'permissions:\n  contents: read\n\n'
                 'jobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n'
-                '      - uses: actions/checkout@v4\n'
-                '      - uses: actions/setup-java@v4\n'
+                '      - uses: actions/checkout@v6\n'
+                '      - uses: actions/setup-java@v5\n'
                 '        with:\n          distribution: temurin\n'
                 f'          java-version: "{jv}"\n          cache: maven\n'
                 '      - run: mvn -B verify\n'),

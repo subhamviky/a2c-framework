@@ -1,5 +1,18 @@
 # Changelog
 
+
+## v1.1.1 — Container and CI upkeep
+
+### Fixed
+- **P0 Python Dockerfile:** the virtual environment is built in `/app` (where the runtime image uses it) instead of `/build`. A venv copied to another path keeps the old interpreter path in its scripts, so `uvicorn` failed with `not found` and the container exited at start.
+
+### Changed
+- Requires E2A `v1.1.1` (propagation fixes).
+- Generated workflows (P0 `ci.yml`, A2C `delivery.yml`) and this repository's CI use Node-24 action versions: `actions/checkout@v6`, `actions/setup-python@v6`, `actions/setup-java@v5`, `hashicorp/setup-terraform@v4`.
+
+### Added
+- `smoke_test_template_mode.py`: a check that the P0 Python Dockerfile builds the venv at its runtime path (22 checks).
+
 ## v1.1.0 — Template mode and consumable packaging
 
 ### Added

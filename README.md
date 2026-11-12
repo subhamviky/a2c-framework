@@ -268,7 +268,7 @@ python smoke_test_generator_concurrency.py
 python smoke_test_g2c_contract.py
 python smoke_test_a2c.py
 python smoke_test_aidlc_integration.py
-python smoke_test_template_mode.py` covers v1.1.0: the G2C Java fix, P0 starters, template mode and `aidlc-build`.
+python smoke_test_template_mode.py` covers v1.1.0 and v1.1.1: the G2C Java fix, P0 starters, template mode and `aidlc-build`.
 ```
 
 All of them use in-memory test doubles; nothing has been validated against a live store, a live inference gateway or production load.

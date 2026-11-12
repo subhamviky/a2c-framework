@@ -74,6 +74,9 @@ check('P0 python: git dependency becomes a Poetry git source',
 check('P0 python: fastapi added for a fastapi_microservice', '"fastapi" = ">=0.111"' in manifest)
 check('P0 python: Dockerfile installs without the root package and without curl',
       '--no-root' in (root / 'Dockerfile').read_text() and 'curl' not in (root / 'Dockerfile').read_text())
+check('P0 python: the venv is built at the path it runs from (/app/.venv), so its scripts find their interpreter',
+      'WORKDIR /build' not in (root / 'Dockerfile').read_text()
+      and 'COPY --from=builder /app/.venv /app/.venv' in (root / 'Dockerfile').read_text())
 jv = {'source': 'inline', 'runtime': 'java', 'build_tool': 'maven', 'platform': 'azure',
       'project_name': 'Ledger', 'group_id': 'com.acme', 'artifact_id': 'ledger', 'project_type': 'spring_boot',
       'output_path': str(out), 'dependencies': ['web', 'actuator']}
