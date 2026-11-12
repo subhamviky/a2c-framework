@@ -27,6 +27,8 @@ from typing import Any, Dict, List
 from a2c_assets import read_template
 from a2c_base import MANDATORY_NFRS
 import g2c_v12
+
+E2A_REF = 'v1.2.0'          # the E2A version this A2C release generates for (its own pin)
 from a2c_contracts import contracts_from
 from a2c_layout import LAYOUTS, move_workflows
 from a2c_upgrade import UpgradeError, clean_request, upgrade, write_manifest
@@ -158,6 +160,9 @@ def _prepare(request: Dict[str, Any], output: Path) -> Dict[str, Any]:
     if harness['e2a_contract'] == '1.2':
         g2c_v12.normalize(harness)                  # agents / workflow / governance checked up front
         harness['project_package'] = ctx.get('package_name')
+        deps = ctx.setdefault('dependencies', [])   # the generated code and tests import e2a
+        if not any(str(d).replace('_', '-').startswith('e2a-framework') for d in deps):
+            deps.append(f'e2a-framework @ git+https://github.com/subhamviky/e2a-framework.git@{E2A_REF}')
     # v1.2 (A-3): app settings are declared once, in a2c_sdlc; P0 and A2C both read them
     ctx['settings'] = normalize_settings(a2c.get('settings') or ctx.get('settings'))
     a2c['settings'] = ctx['settings']

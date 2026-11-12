@@ -60,6 +60,8 @@ with tempfile.TemporaryDirectory() as tmp:
     check('G-2 the output schema becomes a model the evaluation validates',
           'RouterAgentOutput.model_validate' in router and (src / 'agents/router_agent_output.py').is_file())
     check('G-2 material tools are flagged', 'material = True' in (src / 'tools/catalog.py').read_text())
+    check('the generated project depends on E2A v1.2 (its code and tests import e2a)',
+          'e2a-framework.git", tag = "v1.2.0"' in (root / 'pyproject.toml').read_text())
     check('A-4 no application-service module', not (src / 'generated/service.py').exists()
           and (src / 'generated/nfr.py').exists())
     check('A-8 contract, conformance and workflow tests are generated',
