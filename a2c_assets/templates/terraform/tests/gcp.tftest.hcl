@@ -4,7 +4,7 @@ mock_provider "google" {}
 
 variables {
   project_id = "demo-project"
-}
+{{settings_test_variables}}}
 
 run "plan_with_mocks" {
   command = plan
@@ -13,4 +13,4 @@ run "plan_with_mocks" {
     condition     = google_pubsub_subscription.events.dead_letter_policy[0].max_delivery_attempts == 5
     error_message = "The subscription must dead-letter after 5 delivery attempts."
   }
-}
+{{settings_test_asserts}}}

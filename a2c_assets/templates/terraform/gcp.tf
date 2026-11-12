@@ -64,7 +64,7 @@ variable "max_delivery_attempts" {
   description = "Deliveries before a message moves to the dead-letter topic."
   default     = 5
 }
-
+{{settings_variables}}
 locals {
   name = "{{project_slug}}-${var.environment}"
   labels = {
@@ -123,7 +123,7 @@ resource "google_secret_manager_secret_iam_member" "app" {
   member    = "serviceAccount:${google_service_account.app.email}"
 }
 
-# ------------------------------------------------------------------ compute
+{{settings_resources}}# ------------------------------------------------------------------ compute
 resource "google_cloud_run_v2_service" "app" {
   name                = local.name
   location            = var.region
@@ -150,7 +150,7 @@ resource "google_cloud_run_v2_service" "app" {
         name  = "ENVIRONMENT"
         value = var.environment
       }
-      liveness_probe {
+{{settings_env}}      liveness_probe {
         http_get {
           path = var.health_path
         }

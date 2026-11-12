@@ -26,7 +26,9 @@ from typing import Any, Dict, List
 
 from a2c_assets import read_template
 from a2c_base import MANDATORY_NFRS
-from a2c_template_llm import build_template_llm, code_artifact_paths
+from a2c_contracts import contracts_from
+from a2c_settings import normalize as normalize_settings, terraform as settings_terraform
+from a2c_template_llm import SETTINGS_PLACEHOLDERS, build_template_llm, code_artifact_paths
 from ai_dlc_pipeline import AIDLCPipelineOrchestrator, AIDLCStaticPipeline
 from e2a_inmemory_adapters import InMemoryIdempotencyStore, InMemoryTransactionalStore
 
@@ -57,9 +59,11 @@ class ProjectStaticPipeline(AIDLCStaticPipeline):
     """Phase C with real checks against the generated project. Only the
     protected stage hooks are overridden; run_pipeline() stays inherited."""
 
-    def __init__(self, project_root: Path, language: str, cloud: str, run_tests: bool = False):
+    def __init__(self, project_root: Path, language: str, cloud: str, run_tests: bool = False,
+                 settings: List[Dict[str, Any]] = ()):
         super().__init__()
         self.project_root, self.language, self.cloud = Path(project_root), language, cloud
+        self.settings = list(settings)
         self.run_tests = run_tests
         self.findings: List[str] = []
 
@@ -69,7 +73,11 @@ class ProjectStaticPipeline(AIDLCStaticPipeline):
         test = self.project_root / 'infra' / 'tests' / f'{self.cloud}.tftest.hcl'
         if (self.project_root / 'infra' / 'main.tf').is_file() and not test.exists():
             test.parent.mkdir(parents=True, exist_ok=True)
-            test.write_text(read_template(f'terraform/tests/{self.cloud}.tftest.hcl'), encoding='utf-8')
+            values = settings_terraform(self.cloud, self.settings)      # v1.2 (A-3): one assertion per setting
+            text = read_template(f'terraform/tests/{self.cloud}.tftest.hcl')
+            for key in SETTINGS_PLACEHOLDERS:
+                text = text.replace('{{' + key + '}}', values.get(key, ''))
+            test.write_text(text, encoding='utf-8')
 
     def _files(self):
         for path in self.project_root.rglob('*'):
@@ -138,6 +146,13 @@ def _prepare(request: Dict[str, Any], output: Path) -> Dict[str, Any]:
     cloud = a2c.get('target_cloud') or ctx.get('platform', 'aws')
     ctx.setdefault('platform', cloud)
     harness.setdefault('platform', cloud)
+    # v1.2 (A-3): app settings are declared once, in a2c_sdlc; P0 and A2C both read them
+    ctx['settings'] = normalize_settings(a2c.get('settings') or ctx.get('settings'))
+    a2c['settings'] = ctx['settings']
+    # v1.2 (A-5): contracts are read (and checked) once, relative to the working directory or the request
+    base = Path(request.get('_request_dir', '.'))
+    ctx['contract_schemas'] = [{'path': str(p), 'schema': c.schema}
+                               for p, c in zip(a2c.get('contracts', []), contracts_from(a2c.get('contracts', []), base))]
     nfrs = list(dict.fromkeys(a2c.get('mandatory_nfrs', []) + MANDATORY_NFRS))
     lines = [request.get('prompt', {}).get('user_prompt', '').strip(),
              f"Project: {ctx['project_name']}; Cloud: {cloud}",
@@ -154,7 +169,7 @@ def build(request: Dict[str, Any], output: Path, run_tests: bool = False) -> Dic
     root, runtime, cloud = facts['project_root'], facts['runtime'], facts['cloud']
     ctx = request['context']
     llm = build_template_llm()
-    pipeline = ProjectStaticPipeline(root, runtime, cloud, run_tests)
+    pipeline = ProjectStaticPipeline(root, runtime, cloud, run_tests, request['context'].get('settings', []))
     config = {
         'llm_service': llm,
         'idempotency_store': InMemoryIdempotencyStore(),
@@ -198,6 +213,7 @@ def main(argv=None) -> int:
     if not args.verbose:
         logging.disable(logging.WARNING)
     request = json.loads(Path(args.request).read_text(encoding='utf-8'))
+    request['_request_dir'] = str(Path(args.request).resolve().parent)
     report = build(request, Path(args.output), args.run_tests)
     print(json.dumps({k: report[k] for k in ('success', 'phase_reached', 'project_root',
                                              'critic_score', 'findings', 'errors', 'llm_usage')},

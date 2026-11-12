@@ -279,7 +279,8 @@ class IaCAgent(SDLCAssistantAgent):
                 'environment-specific values; no secrets in code. Return only HCL.'
                 + (f'\nService port: {state["port"]}' if state.get('port') else '')
                 + (f'\nPython package: {state["package_name"]}'
-                   if state.get('package_name') and state.get('language', 'python') == 'python' else ''))
+                   if state.get('package_name') and state.get('language', 'python') == 'python' else '')
+                + (f'\nApp settings: {json.dumps(state["settings"])}' if state.get('settings') else ''))
 
     def _evaluate_output(self, response, state, config=None, **kwargs) -> float:
         text = _strip_fences(_text(response))

@@ -24,6 +24,7 @@ from typing import Dict, List, Optional
 import generator_templates as T
 from a2c_assets import read_template
 from a2c_base import MANDATORY_NFRS, nfr_pattern_report
+from a2c_settings import normalize as normalize_settings, terraform as settings_terraform
 from e2a_simulated_llm import SimulatedLLMService, system_contains
 
 CODE_FILES = {'python': {'observability': 'observability.py', 'nfr': 'nfr.py', 'business': 'service.py'},
@@ -76,6 +77,10 @@ def _find(pattern: str, text: str, default: Optional[str] = None) -> Optional[st
     return m.group(1).strip() if m else default
 
 
+SETTINGS_PLACEHOLDERS = ('settings_variables', 'settings_env', 'settings_resources', 'settings_secret_arns',
+                         'settings_test_variables', 'settings_test_variables_block', 'settings_test_asserts')
+
+
 def _render(template: str, values: Dict[str, str]) -> str:
     for key, value in values.items():
         template = template.replace('{{' + key + '}}', value)
@@ -88,7 +93,9 @@ def _values(project: str, cloud: str = 'aws', java_package: str = None, port: in
             'class_prefix': class_prefix(project), 'cloud': cloud,
             'java_package': java_package or 'com.example.generated',
             'port': str(port),
-            'lambda_handler': f'{python_package}.lambda_entry.handler' if python_package else 'app.handler'}
+            'lambda_handler': f'{python_package}.lambda_entry.handler' if python_package else 'app.handler',
+            # v1.2 (A-3): app settings; empty unless the request declares some
+            **{k: '' for k in SETTINGS_PLACEHOLDERS}}
 
 
 def _nfrs_from(text: str) -> List[str]:
@@ -182,7 +189,9 @@ def _a2c_iac(messages, ctx):
     cloud = cloud if cloud in ('aws', 'gcp', 'azure') else 'aws'
     port = int(_find(r'Service port: (\d+)', system, '8080'))           # v1.1.2: the P0 port
     package = _find(r'Python package: (\w+)', system)
-    return _render(read_template(f'terraform/{cloud}.tf'), _values(project, cloud, port=port, python_package=package))
+    settings = normalize_settings(json.loads(_find(r'App settings: (\[.*\])', system, '[]')))
+    values = dict(_values(project, cloud, port=port, python_package=package), **settings_terraform(cloud, settings))
+    return _render(read_template(f'terraform/{cloud}.tf'), values)
 
 
 def _a2c_cicd(messages, ctx):

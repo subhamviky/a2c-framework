@@ -10,7 +10,7 @@ mock_provider "azurerm" {
 
 variables {
   subscription_id = "00000000-0000-0000-0000-000000000000"
-}
+{{settings_test_variables}}}
 
 run "plan_with_mocks" {
   command = plan
@@ -19,4 +19,4 @@ run "plan_with_mocks" {
     condition     = azurerm_servicebus_queue.events.dead_lettering_on_message_expiration
     error_message = "Expired messages must go to the dead-letter sub-queue."
   }
-}
+{{settings_test_asserts}}}

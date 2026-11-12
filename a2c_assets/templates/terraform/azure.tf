@@ -59,7 +59,7 @@ variable "max_delivery_count" {
   description = "Deliveries before a message moves to the dead-letter sub-queue."
   default     = 5
 }
-
+{{settings_variables}}
 locals {
   name = "{{project_slug}}-${var.environment}"
   tags = {
@@ -157,7 +157,7 @@ resource "azurerm_container_app" "app" {
     identity_ids = [azurerm_user_assigned_identity.app.id]
   }
 
-  template {
+{{settings_resources}}  template {
     min_replicas = 0
     max_replicas = 3
     container {
@@ -173,7 +173,7 @@ resource "azurerm_container_app" "app" {
         name  = "KEY_VAULT_URI"
         value = azurerm_key_vault.app.vault_uri
       }
-      liveness_probe {
+{{settings_env}}      liveness_probe {
         transport = "HTTP"
         port      = var.container_port
         path      = var.health_path

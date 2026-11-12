@@ -8,7 +8,7 @@ mock_provider "aws" {
   }
 }
 
-run "plan_with_mocks" {
+{{settings_test_variables_block}}run "plan_with_mocks" {
   command = plan
 
   assert {
@@ -20,4 +20,4 @@ run "plan_with_mocks" {
     condition     = aws_sqs_queue.dlq.message_retention_seconds == 1209600
     error_message = "The dead-letter queue must keep messages for 14 days."
   }
-}
+{{settings_test_asserts}}}

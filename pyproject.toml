@@ -30,6 +30,8 @@ py-modules = [
     "a2c_base",
     "a2c_cli",
     "a2c_concurrency",
+    "a2c_contracts",
+    "a2c_settings",
     "a2c_abstract_class_generator",
     "a2c_inherited_class_generator",
     "a2c_template_llm",

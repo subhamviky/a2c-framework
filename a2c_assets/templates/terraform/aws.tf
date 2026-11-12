@@ -46,7 +46,7 @@ variable "max_receive_count" {
   description = "Deliveries before a message moves to the dead-letter queue."
   default     = 5
 }
-
+{{settings_variables}}
 locals {
   name = "{{project_slug}}-${var.environment}"
   tags = {
@@ -80,7 +80,7 @@ resource "aws_secretsmanager_secret" "app" {
   tags                    = local.tags
 }
 
-# ------------------------------------------------------------ observability
+{{settings_resources}}# ------------------------------------------------------------ observability
 resource "aws_cloudwatch_log_group" "app" {
   name              = "/aws/lambda/${local.name}"
   retention_in_days = 14
@@ -118,7 +118,7 @@ data "aws_iam_policy_document" "app" {
   statement {
     sid       = "Secret"
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = [aws_secretsmanager_secret.app.arn]
+    resources = [aws_secretsmanager_secret.app.arn{{settings_secret_arns}}]
   }
 }
 
@@ -142,7 +142,7 @@ resource "aws_lambda_function" "app" {
       QUEUE_URL   = aws_sqs_queue.main.url
       SECRET_ARN  = aws_secretsmanager_secret.app.arn
       ENVIRONMENT = var.environment
-    }
+{{settings_env}}    }
   }
   depends_on = [aws_cloudwatch_log_group.app]
   tags       = local.tags
