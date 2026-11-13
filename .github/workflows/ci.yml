@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: subhamviky/e2a-framework
-          ref: v1.2.0
+          ref: v1.2.2
           path: e2a-framework
       - uses: actions/setup-python@v6
         with:
@@ -39,7 +39,7 @@ jobs:
         env:
           E2A_REFERENCE_PATH: ${{ github.workspace }}/e2a-framework/reference
         run: |
-          for t in smoke_test_generator_concurrency smoke_test_g2c_contract smoke_test_a2c smoke_test_aidlc_integration smoke_test_template_mode smoke_test_declarations smoke_test_g2c_v12; do
+          for t in smoke_test_generator_concurrency smoke_test_g2c_contract smoke_test_a2c smoke_test_aidlc_integration smoke_test_template_mode smoke_test_declarations smoke_test_g2c_v12 smoke_test_evaluation; do
             echo "== $t"
             python "$t.py" | tail -1
             test "${PIPESTATUS[0]}" -eq 0

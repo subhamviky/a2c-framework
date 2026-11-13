@@ -15,6 +15,7 @@ offline, no account. The request file is an AIDLCPipelineRequest:
 """
 import argparse
 import ast
+import compileall
 import json
 import logging
 import re
@@ -28,7 +29,7 @@ from a2c_assets import read_template
 from a2c_base import MANDATORY_NFRS
 import g2c_v12
 
-E2A_REF = 'v1.2.0'          # the E2A version this A2C release generates for (its own pin)
+E2A_REF = 'v1.2.2'          # the E2A version this A2C release generates for (its own pin)
 from a2c_contracts import contracts_from
 from a2c_layout import LAYOUTS, move_workflows
 from a2c_upgrade import UpgradeError, clean_request, upgrade, write_manifest
@@ -37,12 +38,9 @@ from a2c_template_llm import SETTINGS_PLACEHOLDERS, build_template_llm, code_art
 from ai_dlc_pipeline import AIDLCPipelineOrchestrator, AIDLCStaticPipeline
 from e2a_inmemory_adapters import InMemoryIdempotencyStore, InMemoryTransactionalStore
 
-SECRET_PATTERNS = [
-    ('aws access key', re.compile(r'AKIA[0-9A-Z]{16}')),
-    ('private key', re.compile(r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----')),
-    ('anthropic key', re.compile(r'sk-ant-[A-Za-z0-9\-_]{20,}')),
-    ('literal password', re.compile(r'(?i)(password|secret)\s*=\s*"[^"$\s]{6,}"')),
-]
+from e2a.conformance import check_paths, failed          # v1.2.1 (C-04): Phase C uses E2A's checks
+from e2a.release import SECRET_PATTERNS, load_cases        # one list of secret patterns, E2A's
+from a2c_evaluation import normalize_evaluation
 ENTRY_POINTS = {'run', 'execute', 'retrieve'}
 SKIP_DIRS = {'.git', '.venv', 'node_modules', 'target', '.terraform', '__pycache__'}
 
@@ -53,8 +51,8 @@ STAGE_NOTES = {
     'static_security': 'checked: secret patterns in every project file; terraform fmt when terraform is installed',
     'test_execution': 'checked only with --run-tests; otherwise the project CI runs the tests',
     'scaffold_compliance': 'checked: required artifacts exist; generated agents keep the inherited entry point',
-    'ragas_gate': 'not applicable: no RAG pipeline in a build',
-    'artifact_compilation': 'not applicable: the project CI compiles',
+    'ragas_gate': 'not applicable: no evaluation set declared (a2c_sdlc.evaluation)',
+    'artifact_compilation': 'not applicable: the project CI compiles (Python on E2A v1.2: compiled in scaffold_compliance)',
     'dynamic_security': 'not applicable: the project CI scans the image (Trivy)',
     'deployment_rollout': 'not performed: no deployment in a local build',
 }
@@ -65,10 +63,13 @@ class ProjectStaticPipeline(AIDLCStaticPipeline):
     protected stage hooks are overridden; run_pipeline() stays inherited."""
 
     def __init__(self, project_root: Path, language: str, cloud: str, run_tests: bool = False,
-                 settings: List[Dict[str, Any]] = ()):
+                 settings: List[Dict[str, Any]] = (), e2a_contract: str = '1.1',
+                 evaluation: Dict[str, Any] = None):
         super().__init__()
         self.project_root, self.language, self.cloud = Path(project_root), language, cloud
         self.settings = list(settings)
+        self.e2a_contract, self.evaluation = e2a_contract, evaluation
+        self.evaluation_cases: Dict[str, int] = {}
         self.run_tests = run_tests
         self.findings: List[str] = []
 
@@ -112,6 +113,9 @@ class ProjectStaticPipeline(AIDLCStaticPipeline):
         required.append('pyproject.toml' if self.language == 'python' else 'pom.xml')
         missing = [r for r in required if not (self.project_root / r).is_file()]
         self.findings += [f'missing artifact: {m}' for m in missing]
+        if self.language == 'python' and self.e2a_contract == '1.2':
+            self._check_v12_project()                 # v1.2.1 (C-04): E2A's conformance, strict, and compile
+            return not self.findings
         for path in self._files():
             if path.suffix == '.py' and '/agents/' in path.as_posix():
                 tree = ast.parse(path.read_text(encoding='utf-8'))
@@ -125,6 +129,22 @@ class ProjectStaticPipeline(AIDLCStaticPipeline):
                         r'(?m)^\s*public\s+[\w<>, ]+\s+(run|execute|retrieve)\s*\(', text):
                     self.findings.append(f'{path.name}: overrides a template-method entry point')
         return not self.findings
+
+    def _check_v12_project(self) -> None:
+        src = self.project_root / 'src'
+        findings = check_paths([str(src)]) if src.is_dir() else []
+        if failed(findings, strict=True):
+            self.findings += [f'conformance: {f}' for f in findings if f.rule in ('R1', 'R2', 'D1')]
+        if src.is_dir() and not compileall.compile_dir(str(src), quiet=1):
+            self.findings.append('compile: src/ does not byte-compile')
+        for key in ('set', 'redteam'):                # the cases are scored by the project CI, not here
+            name = (self.evaluation or {}).get(key)
+            if not name:
+                continue
+            try:
+                self.evaluation_cases[name] = len(load_cases(self.project_root / name))
+            except ValueError as error:
+                self.findings.append(f'evaluation: {error}')
 
     def _execute_test_suite(self, config, **kwargs) -> bool:
         if not self.run_tests:
@@ -166,6 +186,14 @@ def _prepare(request: Dict[str, Any], output: Path) -> Dict[str, Any]:
     # v1.2 (A-3): app settings are declared once, in a2c_sdlc; P0 and A2C both read them
     ctx['settings'] = normalize_settings(a2c.get('settings') or ctx.get('settings'))
     a2c['settings'] = ctx['settings']
+    # v1.2.1 (C-04, D-2): evaluation sets, and E2A's release gate in the CI of an E2A v1.2 service
+    evaluation = normalize_evaluation(a2c.get('evaluation') or ctx.get('evaluation'))
+    if evaluation and (runtime != 'python' or harness['e2a_contract'] != '1.2'):
+        raise ValueError('a2c_sdlc.evaluation needs a Python service on E2A v1.2: the gate is '
+                         'e2a.release.ProjectReleaseGate')
+    if evaluation:
+        ctx['evaluation'] = a2c['evaluation'] = evaluation
+    ctx['release_gate'] = harness['e2a_contract'] == '1.2' and runtime == 'python'
     # v1.2 (A-5): contracts are read (and checked) once, relative to the working directory or the request
     base = Path(request.get('_request_dir', '.'))
     ctx['contract_schemas'] = [{'path': str(p), 'schema': c.schema}
@@ -187,7 +215,8 @@ def build(request: Dict[str, Any], output: Path, run_tests: bool = False) -> Dic
     root, runtime, cloud = facts['project_root'], facts['runtime'], facts['cloud']
     ctx = request['context']
     llm = build_template_llm()
-    pipeline = ProjectStaticPipeline(root, runtime, cloud, run_tests, request['context'].get('settings', []))
+    pipeline = ProjectStaticPipeline(root, runtime, cloud, run_tests, request['context'].get('settings', []),
+                                     request['harness'].get('e2a_contract', '1.1'), ctx.get('evaluation'))
     config = {
         'llm_service': llm,
         'idempotency_store': InMemoryIdempotencyStore(),
@@ -208,8 +237,14 @@ def build(request: Dict[str, Any], output: Path, run_tests: bool = False) -> Dic
         'g2c_files': (result.get('generator_result') or {}).get('generated_files', []),
         'pipeline_stages': (result.get('pipeline_report') or {}).get('stages', {}),
         'stage_notes': dict(STAGE_NOTES, test_execution=(
-            'checked: project tests ran' if run_tests else STAGE_NOTES['test_execution'])),
+            'checked: project tests ran' if run_tests else STAGE_NOTES['test_execution']), **(
+            {'scaffold_compliance': 'checked: required artifacts exist; e2a.conformance (strict) over src/; '
+                                    'src/ byte-compiles'} if pipeline.e2a_contract == '1.2' and runtime == 'python'
+            else {}), **({'ragas_gate': 'checked: the evaluation set is well formed ('
+                          f'{pipeline.evaluation_cases}); the project CI scores it on every commit'}
+                         if ctx.get('evaluation') else {})),
         'findings': pipeline.findings,
+        'evaluation_cases': pipeline.evaluation_cases,
         'errors': result.get('errors', []),
         'llm_usage': llm.usage_summary(),
     }

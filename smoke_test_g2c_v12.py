@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 import g2c_v12
-from a2c_cli import build
+from a2c_cli import E2A_REF, build
 from e2a.conformance import check_paths, failed
 
 passed = 0
@@ -61,7 +61,7 @@ with tempfile.TemporaryDirectory() as tmp:
           'RouterAgentOutput.model_validate' in router and (src / 'agents/router_agent_output.py').is_file())
     check('G-2 material tools are flagged', 'material = True' in (src / 'tools/catalog.py').read_text())
     check('the generated project depends on E2A v1.2 (its code and tests import e2a)',
-          'e2a-framework.git", tag = "v1.2.0"' in (root / 'pyproject.toml').read_text())
+          f'e2a-framework.git", tag = "{E2A_REF}"' in (root / 'pyproject.toml').read_text())
     check('A-4 no application-service module', not (src / 'generated/service.py').exists()
           and (src / 'generated/nfr.py').exists())
     check('A-8 contract, conformance and workflow tests are generated',

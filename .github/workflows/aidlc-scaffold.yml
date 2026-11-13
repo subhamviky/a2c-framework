@@ -12,10 +12,10 @@ name: aidlc-scaffold (reusable)
 #     scaffold:
 #       permissions:
 #         contents: write
-#       uses: subhamviky/a2c-framework/.github/workflows/aidlc-scaffold.yml@v1.2.0
+#       uses: subhamviky/a2c-framework/.github/workflows/aidlc-scaffold.yml@v1.2.1
 #       with:
 #         request: ${{ inputs.request }}
-#         a2c_ref: v1.2.0
+#         a2c_ref: v1.2.1
 on:
   workflow_call:
     inputs:
