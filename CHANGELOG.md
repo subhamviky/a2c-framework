@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — documents for v1.2.1 (docs only)
+
+- **A2C design:** new 5.8, evaluation sets and the release gate.
+- **G2C design:** new 5.7, Java on e2a-java.
+- **P0 design:** the `evaluation`, `release_gate` and `e2a_java` request fields.
+- **References:** A2C reference section 10; G2C reference section 19.
+- **Word documents:** the three design `.docx` files regenerated.
+
 ## v1.2.1 — Evaluation sets and E2A's release gate; Java on e2a-java
 
 Requires E2A `v1.2.2`.

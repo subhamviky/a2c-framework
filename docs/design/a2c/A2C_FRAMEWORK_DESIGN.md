@@ -9,9 +9,9 @@
 | Framework | A2C — Architecture-to-Code (developer-platform framework built on E2A) |
 | Document type | Design Document (HLD + LLD) |
 | Author | Subham Gupta, Principal Platform Architect |
-| Source baseline | `subhamviky/a2c-framework` `v1.2.0` — `a2c_base.py` (670 lines), `a2c_settings.py`, `a2c_contracts.py`, `a2c_layout.py`, `a2c_upgrade.py`, `a2c_cli.py`; on `subhamviky/e2a-framework` `v1.2.0` (the `e2a` package; `e2a_base` is its compatibility module) |
-| Date | 13 November 2026 (v1.2.0; baseline 7 November 2026) |
-| Status | Aligned to A2C v1.2.0 and its smoke tests (wave C, design notes C-01 and C-02) |
+| Source baseline | `subhamviky/a2c-framework` `v1.2.1` — `a2c_base.py` (670 lines), `a2c_settings.py`, `a2c_contracts.py`, `a2c_layout.py`, `a2c_upgrade.py`, `a2c_cli.py`; on `subhamviky/e2a-framework` `v1.2.0` (the `e2a` package; `e2a_base` is its compatibility module) |
+| Date | 13 November 2026 (v1.2.1; v1.2.0 the same day; baseline 7 November 2026) |
+| Status | Aligned to A2C v1.2.1 and its smoke tests (wave C, design notes C-01, C-02 and C-04; wave D note D-01) |
 
 ## 1. Introduction
 
@@ -221,6 +221,26 @@ Every project of the Order-to-Cash programme patched its scaffold by hand: envir
 
 Every build writes `<project>/.a2c/manifest.json`: the A2C version, the request and the SHA-256 of every generated file (paths relative to the repository root, so root workflows count). `aidlc-build --upgrade <project>` regenerates the request with the installed version into a temporary folder and decides per file: untouched (current hash = manifest) → replaced; new → added; changed by you → a hunk in `a2c-upgrade.patch`, applied with `git apply --reject`; unchanged by the generator → yours stays, without a patch. Files outside the manifest are never touched and nothing is deleted. A project scaffolded before v1.2 has no manifest: `--baseline <dir>` is the same request rebuilt with the project's original A2C version, which reproduces the original scaffold byte for byte (verified on reconciliation and settlement, both scaffolded with v1.1.0).
 
+### 5.8 Evaluation sets and the release gate (v1.2.1)
+
+Design note C-04 (D-2). A Python service on E2A v1.2 is judged by E2A's release gate, `e2a.release.ProjectReleaseGate`. The request can name the cases that decide the domain stages.
+
+**Table 5 — What `a2c_sdlc.evaluation` produces**
+
+| Request | Generated | Checked where |
+|---|---|---|
+| no `evaluation` (E2A v1.2 service) | a CI step `python -m e2a.release --skip-tests`: the generic stages (secrets, strict conformance, compile) | the project CI, every commit |
+| `{"set": "evals/golden.json"}` | `src/<package>/release/gate.py`: a `ProjectReleaseGate` subclass whose `_score_case` stub fails until written; the set with one example case; a CI step running that gate | the project CI scores the cases; Phase C checks the set is well formed |
+| `+ "redteam": "evals/redteam.json"` | a `_probe` stub and the red-team set (injections, PII) | as above |
+| `+ "threshold": 0.9` | `--config` with `faithfulness_threshold` in the CI step | the project CI |
+
+**Phase C (`aidlc-build`) on E2A's checks.** `ProjectStaticPipeline` takes E2A's secret patterns. For an E2A v1.2 project it runs:
+- strict `e2a.conformance` over `src/`;
+- `compileall`;
+- a check that each declared evaluation set is well formed (`report.evaluation_cases`).
+
+It does not score the cases, because the domain code behind them is written after the build. A Java service or an E2A v1.1 service with `evaluation` is refused: the gate is a Python E2A v1.2 class.
+
 ## 6. Data Contracts
 
 ![Figure 7 — DevRequest fields and writers](images/03_devrequest.png)
@@ -229,7 +249,7 @@ Every build writes `<project>/.a2c/manifest.json`: the A2C version, the request 
 
 ### 6.1 DevRequest
 
-**Table 5 — DevRequest fields**
+**Table 6 — DevRequest fields**
 
 | Field | Type | Written by | Meaning |
 |---|---|---|---|
@@ -273,7 +293,7 @@ Every build writes `<project>/.a2c/manifest.json`: the A2C version, the request 
 
 ### 6.4 Configuration
 
-**Table 6 — Configuration**
+**Table 7 — Configuration**
 
 | Key (env) | Default | Used by |
 |---|---|---|
@@ -313,7 +333,7 @@ The A2C keys are registered in the E2A configuration registry at import time and
 
 ### 8.1 SDLCAssistantAgent
 
-**Table 7 — SDLCAssistantAgent methods**
+**Table 8 — SDLCAssistantAgent methods**
 
 | Method | Kind | Signature → returns | Contract |
 |---|---|---|---|
@@ -336,7 +356,7 @@ The A2C keys are registered in the E2A configuration registry at import time and
 
 ### 8.3 Specialist agents
 
-**Table 8 — Specialist agents**
+**Table 9 — Specialist agents**
 
 | Agent | Writes | `_evaluate_output` score |
 |---|---|---|
@@ -376,7 +396,7 @@ The A2C keys are registered in the E2A configuration registry at import time and
 
 `LocalArtifactWriter.write(root, rel, content, expected_version)` reads the file's current SHA-256 under a per-path lock: equal to the new content → `UNCHANGED`; different from the version read at the start of the run → `CONFLICT`; otherwise write → `COMMITTED`.
 
-**Table 9 — Remote tools (BaseToolService)**
+**Table 10 — Remote tools (BaseToolService)**
 
 | Tool | Endpoint | Idempotency key | Input validation |
 |---|---|---|---|
@@ -401,7 +421,7 @@ Runtime-configuration policy (`approved_clouds`) stays in `_apply_policy`, becau
 
 ### 8.8 Declarations and upgrades (v1.2)
 
-**Table 10 — v1.2 modules**
+**Table 11 — v1.2 modules**
 
 | Module | Public functions | Contract |
 |---|---|---|
@@ -488,7 +508,7 @@ workflow = SDLCWorkflow(config=config, agents=agents)
 
 ## 13. Verification
 
-**Table 11 — Evidence (v1.2.0)**
+**Table 12 — Evidence (v1.2.0)**
 
 | Suite | What it shows |
 |---|---|
@@ -502,7 +522,7 @@ workflow = SDLCWorkflow(config=config, agents=agents)
 
 At the earlier baseline no A2C code existed: `BootstrapAndGenerateWorkflow`'s A2C phase was a placeholder and the AI-DLC orchestrator imported `SDLCWorkflow` from a module that did not exist. Both now run the implementation described here. The earlier naming drift (`SDLCBaseAgent`, `CriticAgent`) is resolved in favour of `SDLCAssistantAgent` and `CodeCriticAgent`; the two orders (topology vs NFR-first) are both implemented, NFR-first by default.
 
-**Table 12 — Remaining observations**
+**Table 13 — Remaining observations**
 
 | ID | Observation | Effect | Recommendation |
 |---|---|---|---|

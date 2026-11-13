@@ -581,6 +581,25 @@ A request declares what projects used to patch by hand after scaffolding. `aidlc
 
 The design is in the A2C Framework Design Document, Sections 5.6, 5.7 and 8.8.
 
+## 10. Evaluation Sets and the Release Gate (v1.2.1)
+
+```jsonc
+"a2c_sdlc": {"evaluation": {"set": "evals/golden.json", "redteam": "evals/redteam.json", "threshold": 0.85}}
+```
+
+For a Python service on E2A v1.2, this generates:
+- `src/<package>/release/gate.py`, an `e2a.release.ProjectReleaseGate` subclass. Its `_score_case` and `_probe` stubs fail until written.
+- The evaluation files, with one example case each.
+- A CI step after the tests: `python -m <package>.release.gate --skip-tests`, with the declared threshold.
+
+Without `evaluation`, an E2A v1.2 service's CI runs the generic gate (`python -m e2a.release --skip-tests`).
+
+Phase C (`aidlc-build`) uses E2A's secret patterns. For a v1.2 project it also runs:
+- strict `e2a.conformance` and `compileall` over `src/`;
+- a check that each declared set is well formed. The cases are scored by the project CI, not at build time.
+
+Design: wave C note C-04 (o2c-platform-hub).
+
 ## Related Documents and Diagrams
 
 The full high- and low-level design of A2C is in [`design/a2c/`](design/a2c/A2C_FRAMEWORK_DESIGN.md), with every diagram as PNG plus PlantUML or Graphviz source. This reference remains the contract; the design document explains how it fits together.

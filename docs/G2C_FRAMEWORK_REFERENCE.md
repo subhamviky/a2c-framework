@@ -1015,6 +1015,27 @@ P0 no longer generates `generated/service.py` or `…ServiceService.java`; no pr
 
 `smoke_test_g2c_v12.py` (17 checks): a three-agent request generates code that passes `e2a.conformance --strict`, its own `AgentContract` tests and one request through the workflow with `SimulatedLLMService`; the single-agent request still works; a Java 1.2 request is refused.
 
+## 19. Java on e2a-java (v1.2.1)
+
+**Opting in:** a Java `e2a_inherited` request with `"e2a_contract": "1.2"` generates against e2a-java (`com.subhamviky.e2a`, shipped with E2A v1.2.2), from the same `agents` / `workflow` / `governance` declaration as Python. The Java default stays `"1.1"` until v1.3.
+
+**What is generated (`g2c_java12.py`):**
+
+| File | Content |
+|:---|:---|
+| `agents/<Agent>.java` | extends `com.subhamviky.e2a.agent.BaseAgent`; `buildMessages` (`null` for a deterministic agent), `evaluateOutput` checking the output schema, `fallback`, `prepare` for reads, `act` for writes |
+| `workflow/<Workflow>.java` | `Steps.of(Step…, Route….materialStep())` |
+| `governance/ServiceGovernance.java` | the stages (`capacity`, `firewall`, `approval`; others refused) and each agent's tools |
+| `tools/<Tool>Tool.java` | `ToolService` stubs, `material()` for writes |
+| `<Agent>ContractTest.java` | an `AgentContract` (e2a-test) per agent |
+
+**What else changes:**
+- **No `E2ABase.java`** is generated.
+- **P0** adds `e2a-core` and `e2a-test`, and installs e2a-java from E2A's tag in the generated CI and Dockerfile.
+- **The critic** checks the hooks and leaves compilation to `mvn verify`.
+
+**Tests:** `smoke_test_java12.py` (14 checks). Design: wave D note D-01.
+
 ## Related Documents and Diagrams
 
 The full high- and low-level design of G2C is in [`design/g2c/`](design/g2c/G2C_FRAMEWORK_DESIGN.md), with every diagram as PNG plus PlantUML or Graphviz source. This reference remains the contract; the design document explains how it fits together.
