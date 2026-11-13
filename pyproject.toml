@@ -47,6 +47,7 @@ py-modules = [
     "generator_critic_agent",
     "generator_factory",
     "generator_templates",
+    "g2c_java12",
     "g2c_v12",
     "inherited_generator",
     "typedicts",

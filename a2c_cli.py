@@ -27,6 +27,7 @@ from typing import Any, Dict, List
 
 from a2c_assets import read_template
 from a2c_base import MANDATORY_NFRS
+import g2c_java12
 import g2c_v12
 
 E2A_REF = 'v1.2.2'          # the E2A version this A2C release generates for (its own pin)
@@ -174,10 +175,17 @@ def _prepare(request: Dict[str, Any], output: Path) -> Dict[str, Any]:
     # v1.2 (G-3): Python code targets E2A v1.2 unless the request says 1.1; Java has no v1.2 runtime yet
     harness.setdefault('e2a_contract', '1.2' if runtime == 'python'
                        and harness.get('generator_type', 'e2a_inherited') == 'e2a_inherited' else '1.1')
-    if harness['e2a_contract'] == '1.2' and runtime != 'python':
-        raise ValueError('e2a_contract 1.2 is available for Python only: the Java E2A runtime (e2a-java) is '
-                         'wave D; use "e2a_contract": "1.1" for Java')
-    if harness['e2a_contract'] == '1.2':
+    if harness['e2a_contract'] == '1.2' and runtime not in ('python', 'java'):
+        raise ValueError(f'e2a_contract 1.2 is available for Python and Java (e2a-java), not {runtime}')
+    if harness['e2a_contract'] == '1.2' and runtime == 'java':
+        g2c_java12.normalize(harness)               # D-01: agents / workflow / governance, e2a-java's stages
+        deps = ctx.setdefault('dependencies', [])   # Maven coordinates (P-5): the generated code and tests
+        v = g2c_java12.E2A_JAVA_VERSION
+        for coord in (f'com.subhamviky.e2a:e2a-core:{v}', f'com.subhamviky.e2a:e2a-test:{v}@test'):
+            if coord not in deps:
+                deps.append(coord)
+        ctx['e2a_java'] = v                         # P0: the CI and the Dockerfile install e2a-java first
+    elif harness['e2a_contract'] == '1.2':
         g2c_v12.normalize(harness)                  # agents / workflow / governance checked up front
         harness['project_package'] = ctx.get('package_name')
         deps = ctx.setdefault('dependencies', [])   # the generated code and tests import e2a

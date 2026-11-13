@@ -122,6 +122,9 @@ def _g2c_inherited(kind):
     def respond(messages, ctx):
         user = _user(messages)
         declaration = _find(r'Agent declaration: (\{.*\})', user)
+        if declaration and _find(r'for runtime (\w+)', user, 'python') == 'java':   # D-01: e2a-java
+            import g2c_java12
+            return g2c_java12.agent_source(json.loads(declaration), _find(r'Java package: (\S+)', user, 'com.example'))
         if declaration:                         # v1.2 (G-3): the E2A v1.2 contract, from the declaration
             import g2c_v12
             return g2c_v12.agent_source(json.loads(declaration), '')

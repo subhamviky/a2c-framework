@@ -95,6 +95,7 @@ class ScaffoldRequest(TypedDict, total=False):
     # v1.2.1 (C-04)
     evaluation:       dict       # {set, redteam, threshold}: a generated release gate, eval files, CI step
     release_gate:     bool       # True → the CI runs E2A's release gate (generic stages); set by aidlc-build for E2A v1.2
+    e2a_java:         str        # e2a-java version (D-01): the Java CI and Dockerfile install it from E2A's tag
 
     # ── Written by bootstrapper (do not supply) ──────────────────────────────
     scaffold_key:      str        # idempotency key: name:runtime:build_tool:platform
@@ -1462,13 +1463,20 @@ Apache License 2.0 — see [LICENSE](LICENSE)
         name = request.get('artifact_id', 'app')
         jv   = request.get('java_source_version', '21')
         port = int(request.get('port', 8080))
+        e2a = request.get('e2a_java')      # D-01: e2a-java, built from E2A's tag (no package registry)
+        build = (f'''RUN apk add --no-cache maven git \\
+ && git clone -q --depth 1 --branch v{e2a} https://github.com/subhamviky/e2a-framework.git /e2a \\
+ && mvn -B -q -f /e2a/java/pom.xml install -DskipTests
+COPY pom.xml .
+COPY src ./src
+RUN mvn clean package -DskipTests''' if e2a else '''COPY pom.xml .
+COPY src ./src
+RUN apk add --no-cache maven && mvn clean package -DskipTests''')
         return {
             'Dockerfile': f'''# Multi-stage Java build — non-root runtime image
 FROM eclipse-temurin:{jv}-jdk-alpine AS builder
 WORKDIR /build
-COPY pom.xml .
-COPY src ./src
-RUN apk add --no-cache maven && mvn clean package -DskipTests
+{build}
 
 FROM eclipse-temurin:{jv}-jre-alpine AS runtime
 WORKDIR /app
@@ -1523,7 +1531,13 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
                 '      - uses: actions/setup-java@v5\n'
                 '        with:\n          distribution: temurin\n'
                 f'          java-version: "{jv}"\n          cache: maven\n'
-                '      - run: mvn -B verify\n'),
+                + (f'      - name: Install e2a-java {request["e2a_java"]} (built from E2A\'s tag; no package registry)\n'
+                   f'        run: |\n'
+                   f'          git clone -q --depth 1 --branch v{request["e2a_java"]} '
+                   f'https://github.com/subhamviky/e2a-framework.git "$RUNNER_TEMP/e2a"\n'
+                   f'          mvn -B -q -f "$RUNNER_TEMP/e2a/java/pom.xml" install -DskipTests\n'
+                   if request.get('e2a_java') else '')
+                + '      - run: mvn -B verify\n'),
             '.devcontainer/devcontainer.json': json.dumps({
                 'name': name,
                 'image': f'mcr.microsoft.com/devcontainers/java:1-{jv}',

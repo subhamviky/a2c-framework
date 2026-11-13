@@ -34,12 +34,19 @@ jobs:
         run: |
           python -I -c "from a2c_assets import read_template; assert 'aws_sqs_queue' in read_template('terraform/aws.tf'); import a2c_cli, a2c_template_llm; print('package OK')"
           aidlc-build --help | head -1
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Install e2a-java from the E2A checkout (smoke_test_java12 builds a generated project against it)
+        run: mvn -B -q -f e2a-framework/java/pom.xml install -DskipTests
       - name: Run the smoke tests
         shell: bash
         env:
           E2A_REFERENCE_PATH: ${{ github.workspace }}/e2a-framework/reference
         run: |
-          for t in smoke_test_generator_concurrency smoke_test_g2c_contract smoke_test_a2c smoke_test_aidlc_integration smoke_test_template_mode smoke_test_declarations smoke_test_g2c_v12 smoke_test_evaluation; do
+          for t in smoke_test_generator_concurrency smoke_test_g2c_contract smoke_test_a2c smoke_test_aidlc_integration smoke_test_template_mode smoke_test_declarations smoke_test_g2c_v12 smoke_test_evaluation smoke_test_java12; do
             echo "== $t"
             python "$t.py" | tail -1
             test "${PIPESTATUS[0]}" -eq 0

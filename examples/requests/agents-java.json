@@ -1,0 +1,91 @@
+{
+  "tenant_id": "ci",
+  "context": {
+    "source": "inline",
+    "project_name": "agents-java-service",
+    "runtime": "java",
+    "build_tool": "maven",
+    "platform": "gcp",
+    "project_type": "spring_boot",
+    "group_id": "com.example.orders",
+    "artifact_id": "agents-java-service",
+    "dependencies": [
+      "web",
+      "actuator"
+    ]
+  },
+  "harness": {
+    "generator_type": "e2a_inherited",
+    "e2a_contract": "1.2",
+    "agents": [
+      {
+        "name": "RouterAgent",
+        "kind": "model",
+        "output_schema": {
+          "type": "object",
+          "required": [
+            "intent"
+          ],
+          "properties": {
+            "intent": {
+              "enum": [
+                "ORDER",
+                "STATUS"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "name": "OrderAgent",
+        "kind": "deterministic",
+        "reads": [
+          "get_price"
+        ],
+        "writes": [
+          "submit_payment"
+        ]
+      },
+      {
+        "name": "StatusAgent",
+        "kind": "model",
+        "reads": [
+          "get_order"
+        ]
+      }
+    ],
+    "workflow": {
+      "name": "OrderWorkflow",
+      "steps": [
+        {
+          "step": "route",
+          "agent": "RouterAgent"
+        },
+        {
+          "step": "act",
+          "route_by": "intent",
+          "agents": {
+            "ORDER": "OrderAgent",
+            "STATUS": "StatusAgent"
+          },
+          "material": true
+        }
+      ]
+    },
+    "governance": {
+      "stages": [
+        "capacity",
+        "firewall",
+        "approval"
+      ]
+    }
+  },
+  "prompt": {
+    "user_prompt": "Orders and order status, as three agents in one workflow, on e2a-java."
+  },
+  "a2c_sdlc": {
+    "enabled": true,
+    "project_type": "Spring Boot",
+    "target_cloud": "gcp"
+  }
+}

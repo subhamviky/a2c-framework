@@ -84,9 +84,9 @@ with tempfile.TemporaryDirectory() as tmp:
           and state['steps'][1]['agent'] == 'StatusAgent')
 
 java = json.loads((HERE / 'examples/requests/java-azure-service.json').read_text())
-java['harness']['e2a_contract'] = '1.2'
-check('G-3 Java with contract 1.2 is refused (e2a-java is wave D)',
-      refused(lambda: build(java, Path(tempfile.mkdtemp())), 'Python only'))
+java['harness'].update(e2a_contract='1.2', governance={'stages': ['redaction']})
+check('D-01 Java on contract 1.2 is accepted (e2a-java), but only with the stages e2a-java has',
+      refused(lambda: build(java, Path(tempfile.mkdtemp())), 'available for Java'))
 
 single = json.loads((HERE / 'examples/requests/python-gcp-service.json').read_text())
 with tempfile.TemporaryDirectory() as tmp:

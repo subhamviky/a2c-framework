@@ -86,7 +86,10 @@ class GeneratorCriticAgent:
             except SyntaxError as e:
                 return self._report(0.0, ctype, ['python syntax error: %s' % e.msg], passed, findings)
 
-        if runtime == 'java' and ctype and self.config.get('java_compile_check', True):
+        java12 = runtime == 'java' and request.get('e2a_contract') == '1.2'
+        if java12:            # D-01: the code imports e2a-java, which is not on a standalone javac's classpath
+            passed.append('compiled by the project build (mvn verify, against e2a-java)')
+        if runtime == 'java' and ctype and not java12 and self.config.get('java_compile_check', True):
             error = self._java_compile_error(source, request)
             if error:
                 return self._report(0.0, ctype, ['java compile error: %s' % error], passed, findings)
@@ -198,6 +201,13 @@ class GeneratorCriticAgent:
                 errors = []
             for f in errors:
                 missing.append(f'conformance {f.rule}: {f.where}'); d += self.MISSING_ELEMENT
+        if request.get('e2a_contract') == '1.2' and request.get('runtime') == 'java':
+            # D-01: e2a-java. run() is final in BaseAgent, so the compiler enforces R1; the hooks:
+            hooks = ('buildMessages',) + (('evaluateOutput', 'fallback') if 'return null;' not in source else ())
+            if 'com.subhamviky.e2a.agent.BaseAgent' in source:
+                passed.append('extends e2a-java BaseAgent')
+            else:
+                missing.append('extends com.subhamviky.e2a.agent.BaseAgent'); d += self.MISSING_ELEMENT
         for hook in hooks:
             if hook in methods:
                 passed.append(hook)
