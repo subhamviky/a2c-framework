@@ -1,5 +1,37 @@
 # Changelog
 
+## v1.2.1 — Evaluation sets and E2A's release gate; Java on e2a-java
+
+Requires E2A `v1.2.2`.
+
+### Added — evaluation sets (design note C-04, D-2)
+- **`a2c_sdlc.evaluation: {set, redteam, threshold}`** (Python, E2A v1.2) generates:
+  - `src/<package>/release/gate.py`, a `ProjectReleaseGate` subclass whose `_score_case` / `_probe` stubs fail until written;
+  - the evaluation files, with one example case each;
+  - a release-gate step in the CI, with the declared threshold.
+- **Without an evaluation**, an E2A v1.2 service's CI runs E2A's generic gate (`python -m e2a.release`).
+- **Phase C** (`aidlc-build`) uses E2A's checks:
+  - E2A's secret patterns;
+  - for an E2A v1.2 project, strict `e2a.conformance` and `compileall` over `src/`;
+  - a declared evaluation set's shape (the cases are scored by the project CI).
+
+### Added — G2C generates Java on E2A v1.2 (design note D-01, G-4)
+- **`"e2a_contract": "1.2"` on a Java request**, an opt-in (the Java default stays `1.1`), generates against e2a-java (`com.subhamviky.e2a`):
+  - one class per agent, with hooks from `kind`, `reads`, `writes` and `output_schema`;
+  - the declared workflow (`Steps`, `Step`, `Route`);
+  - `ServiceGovernance` (capacity, firewall, approval);
+  - tool stubs (`material` for writes);
+  - an `AgentContract` JUnit test per agent.
+- **No `E2ABase.java` is generated.** P0 adds `e2a-core` and `e2a-test` as Maven coordinates and installs e2a-java from E2A's tag in the generated CI and Dockerfile.
+- **The critic:** it checks the Java v1.2 hooks; compilation is the project's `mvn verify`, against e2a-java.
+
+### Also
+- **New smoke tests:**
+  - `smoke_test_evaluation.py` (17 checks);
+  - `smoke_test_java12.py` (14 checks, including `mvn verify` of a generated three-agent Java project);
+- **Updated:** `smoke_test_g2c_v12.py` checks the remaining Java refusal (a stage e2a-java does not have).
+- **CI:** installs e2a-java and runs both new tests. The E2A pin is `v1.2.2`. New example: `examples/requests/agents-java.json`.
+
 ## v1.2.0 — Declare it in the request; generate for E2A v1.2 (wave C)
 
 Requires E2A `v1.2.0`.
