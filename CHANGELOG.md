@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — CI fix
+
+- **The CI guard** (v1.2.2) matched any line containing "removed in v1.3". That includes the warning A2C's own build report gives on purpose for a Python `"e2a_contract": "1.1"` request, so `smoke_test_g2c_v12` failed the job. It now matches E2A's adapter warning ("uses the v1.1 keyword signature"). CI only: the package is unchanged.
+
 ## v1.2.2 — Preparing for v1.3 (design note V13-01)
 
 Requires E2A `v1.2.2`. Nothing is removed.

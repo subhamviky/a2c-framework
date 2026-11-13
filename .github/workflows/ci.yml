@@ -51,8 +51,9 @@ jobs:
             python -W always "$t.py" > "$RUNNER_TEMP/$t.log" 2>&1; rc=$?
             tail -1 "$RUNNER_TEMP/$t.log"
             test "$rc" -eq 0 || { tail -40 "$RUNNER_TEMP/$t.log"; exit 1; }
-            # v1.3 preparation (V13-01): nothing may run on E2A's v1.1 adapters
-            if grep "removed in v1.3" "$RUNNER_TEMP/$t.log"; then echo "::error::$t uses E2A's v1.1 adapters"; exit 1; fi
+            # v1.3 preparation (V13-01): nothing may run on E2A's v1.1 adapters. Match E2A's own
+            # DeprecationWarning, not "removed in v1.3": A2C's build report says that too, on purpose
+            if grep "uses the v1.1 keyword signature" "$RUNNER_TEMP/$t.log"; then echo "::error::$t uses E2A's v1.1 adapters"; exit 1; fi
           done
 
   images:
