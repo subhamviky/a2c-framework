@@ -175,6 +175,14 @@ def _prepare(request: Dict[str, Any], output: Path) -> Dict[str, Any]:
     # v1.2 (G-3): Python code targets E2A v1.2 unless the request says 1.1; Java has no v1.2 runtime yet
     harness.setdefault('e2a_contract', '1.2' if runtime == 'python'
                        and harness.get('generator_type', 'e2a_inherited') == 'e2a_inherited' else '1.1')
+    if harness['e2a_contract'] == '1.1' and harness.get('generator_type', 'e2a_inherited') == 'e2a_inherited':
+        # v1.3 preparation (V13-01): say what v1.3 removes, at build time, in the report
+        request.setdefault('_warnings', []).append(
+            'e2a_contract 1.1 for Python is removed in v1.3: E2A v1.3 no longer runs v1.1 hooks; '
+            'use "1.2" (the default)' if runtime == 'python' else
+            'the Java v1.1 skeleton (E2ABase.java) is removed in A2C v1.3, whose Java default is "1.2" '
+            '(e2a-java); set "e2a_contract": "1.2" now')
+        logging.warning(request['_warnings'][-1])
     if harness['e2a_contract'] == '1.2' and runtime not in ('python', 'java'):
         raise ValueError(f'e2a_contract 1.2 is available for Python and Java (e2a-java), not {runtime}')
     if harness['e2a_contract'] == '1.2' and runtime == 'java':
@@ -253,6 +261,7 @@ def build(request: Dict[str, Any], output: Path, run_tests: bool = False) -> Dic
                          if ctx.get('evaluation') else {})),
         'findings': pipeline.findings,
         'evaluation_cases': pipeline.evaluation_cases,
+        'warnings': list(request.get('_warnings', [])),
         'errors': result.get('errors', []),
         'llm_usage': llm.usage_summary(),
     }

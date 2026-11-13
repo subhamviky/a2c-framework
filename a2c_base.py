@@ -160,21 +160,19 @@ class SDLCAssistantAgent(BaseAgent):
     agent_name = 'SDLCAssistantAgent'
     artifact_field = 'generated_code'
 
-    def _apply_policy(self, state, config=None, **kwargs) -> None:
+    def _apply_policy(self, state, ctx) -> None:
         # 1. inject missing mandatory NFRs
         nfrs = state.setdefault('mandatory_nfrs', [])
         injected = [n for n in MANDATORY_NFRS if n not in nfrs]
         nfrs.extend(injected)
         if injected:
             logging.info(f'[{self.agent_name}] A2C policy injection: {injected}')
-        # 2. approved cloud and agent
-        cfg = config or {}
-        approved = cfg.get('approved_clouds', APPROVED_CLOUDS)
+        # 2. approved cloud (an application setting, config['approved_clouds']). No approved_agents
+        #    check since v1.2.2: it read a registry key whose default is [], and E2A v1.2's
+        #    governance stages and tool_policy are where agents are allowed (design notes C-01, V13-01)
+        approved = ctx.setting('approved_clouds', APPROVED_CLOUDS)
         if str(state.get('target_cloud', '')).lower() not in approved:
             raise GovernanceViolationError(f"Cloud {state.get('target_cloud')} not approved")
-        agents = cfg.get('approved_agents')
-        if agents is not None and self.agent_name not in agents:
-            raise GovernanceViolationError(f'{self.agent_name} is not an approved agent')
         # 3. business dedup key (the technical key is the workflow's claim)
         state['generation_key'] = (f"{state.get('project_name')}:{state.get('project_type')}"
                                    f":{state.get('target_cloud')}")
@@ -193,7 +191,7 @@ class SDLCAssistantAgent(BaseAgent):
                 '6. Model calls only through the injected llm_service; no semaphore, rate limiter '
                 'or provider SDK.\nReturn only source code.')
 
-    def _build_messages(self, state, config=None, **kwargs) -> list:
+    def _build_messages(self, state, ctx) -> list:
         user = f'Project context: {state.get("context") or "standard microservice"}'
         if state.get('spec'):
             user += f'\n\nSpecification:\n{state["spec"]}'
@@ -202,7 +200,7 @@ class SDLCAssistantAgent(BaseAgent):
         return [{'role': 'system', 'content': self._system_prompt(state)},
                 {'role': 'user', 'content': user}]
 
-    def _evaluate_output(self, response, state, config=None, **kwargs) -> float:
+    def _evaluate_output(self, response, state, ctx) -> float:
         text = _strip_fences(_text(response))
         state[self.artifact_field] = text
         report = nfr_pattern_report(text, state.get('mandatory_nfrs', MANDATORY_NFRS))
@@ -210,12 +208,12 @@ class SDLCAssistantAgent(BaseAgent):
         state.setdefault('agent_scores', {})[self.agent_name] = report['score']
         return report['score']
 
-    def _fallback(self, state, config=None, **kwargs):
+    def _fallback(self, state, ctx):
         missing = (state.get('nfr_check_detail') or {}).get('missing', [])
         return {'text': state.get(self.artifact_field, ''), 'degraded': True,
                 'note': f'quality gate below threshold; missing NFR patterns: {missing}'}
 
-    def _handle_error(self, error, state, config=None, **kwargs):
+    def _handle_error(self, error, state, ctx):
         logging.error(f'[{self.agent_name}][{state.get("project_name", "?")}] {error}')
         state.setdefault('errors', []).append(f'{self.agent_name}: {error}')
         return state
@@ -230,7 +228,7 @@ class RequirementsAgent(SDLCAssistantAgent):
                 'TypedDict/DTO schema, the NFR list with the enforcing mechanism for each, the '
                 'Clean Architecture layer map and the E2A class mapping. Return Markdown.')
 
-    def _evaluate_output(self, response, state, config=None, **kwargs) -> float:
+    def _evaluate_output(self, response, state, ctx) -> float:
         text = _strip_fences(_text(response))
         state['spec'] = text
         checks = [bool(text), all(n.lower() in text.lower() for n in state.get('mandatory_nfrs', [])),
@@ -259,7 +257,7 @@ class CodeGenAgent(SDLCAssistantAgent):
     def _system_prompt(self, state) -> str:
         return super()._system_prompt(state) + '\n' + self._mode(state)[2]
 
-    def _evaluate_output(self, response, state, config=None, **kwargs) -> float:
+    def _evaluate_output(self, response, state, ctx) -> float:
         field, nfrs, _ = self._mode(state)
         text = _strip_fences(_text(response))
         state[field] = text
@@ -283,7 +281,7 @@ class IaCAgent(SDLCAssistantAgent):
                    if state.get('package_name') and state.get('language', 'python') == 'python' else '')
                 + (f'\nApp settings: {json.dumps(state["settings"])}' if state.get('settings') else ''))
 
-    def _evaluate_output(self, response, state, config=None, **kwargs) -> float:
+    def _evaluate_output(self, response, state, ctx) -> float:
         text = _strip_fences(_text(response))
         state['generated_iac'] = text
         checks = [len(text) > 100, bool(re.search(r'\b(resource|module)\s+"', text)),
@@ -303,7 +301,7 @@ class CICDAgent(SDLCAssistantAgent):
                 '(id-token: write), build, tests, evaluation gate, image scan (Trivy), deploy and '
                 'automatic rollback. Return only YAML.')
 
-    def _evaluate_output(self, response, state, config=None, **kwargs) -> float:
+    def _evaluate_output(self, response, state, ctx) -> float:
         text = _strip_fences(_text(response))
         state['generated_cicd'] = text
         checks = [bool(re.search(r'(?m)^on:', text)), 'jobs:' in text,
@@ -322,14 +320,7 @@ class CodeCriticAgent(BaseAgent):
     Validation: _validate_code_critic_agent on the validation service."""
     agent_name = 'CodeCriticAgent'
 
-    def _apply_policy(self, state, config=None, **kwargs) -> None:
-        """Governance only; the cheaper critic model is chosen by the chain
-        (model_id=critic_model_id on this agent's run)."""
-        agents = (config or {}).get('approved_agents')
-        if agents is not None and self.agent_name not in agents:
-            raise GovernanceViolationError(f'{self.agent_name} is not an approved agent')
-
-    def _build_messages(self, state, config=None, **kwargs) -> list:
+    def _build_messages(self, state, ctx) -> list:
         code = '\n\n'.join(state.get(k, '') for k in
                            ('generated_observability', 'generated_nfr_module', 'generated_code'))
         return [{'role': 'system', 'content':
@@ -339,7 +330,7 @@ class CodeCriticAgent(BaseAgent):
                 {'role': 'user', 'content':
                  f'Required NFRs: {", ".join(state.get("mandatory_nfrs", []))}\n\nCode:\n{code}'}]
 
-    def _evaluate_output(self, response, state, config=None, **kwargs) -> float:
+    def _evaluate_output(self, response, state, ctx) -> float:
         try:
             review = json.loads(_strip_fences(_text(response)) or '{}')
             model_score = float(review.get('score', 0.0))
@@ -355,10 +346,10 @@ class CodeCriticAgent(BaseAgent):
                                   'passed': pattern['passed']}
         return score
 
-    def _fallback(self, state, config=None, **kwargs):
+    def _fallback(self, state, ctx):
         return {'text': 'Code review failed. Regenerating with stricter NFR prompt.', 'degraded': True}
 
-    def _handle_error(self, error, state, config=None, **kwargs):
+    def _handle_error(self, error, state, ctx):
         logging.error(f'[CodeCriticAgent] {error}')
         state.setdefault('errors', []).append(f'CodeCriticAgent: {error}')
         return state
@@ -613,7 +604,7 @@ class CodeGenTool(BaseToolService):
     """Remote write of a generated file. Idempotency key: project + path."""
     tool_name = 'code_gen'
 
-    def get_endpoint(self, config=None, tenant_id=None, **kwargs):
+    def _get_endpoint(self, config=None, tenant_id=None, **kwargs):
         return resolve_config('tool_base_url', config, kwargs) + '/codegen/write'
 
     def _build_payload(self, payload, config=None, **kwargs):
@@ -630,7 +621,7 @@ class IaCGenTool(BaseToolService):
     """Remote write of Terraform. Idempotency key: project + resource_type."""
     tool_name = 'iac_gen'
 
-    def get_endpoint(self, config=None, tenant_id=None, **kwargs):
+    def _get_endpoint(self, config=None, tenant_id=None, **kwargs):
         return resolve_config('tool_base_url', config, kwargs) + '/iac/write'
 
     def _build_payload(self, payload, config=None, **kwargs):
@@ -644,7 +635,7 @@ class CICDGenTool(BaseToolService):
     """Remote write of a workflow. Idempotency key: project + workflow_name."""
     tool_name = 'cicd_gen'
 
-    def get_endpoint(self, config=None, tenant_id=None, **kwargs):
+    def _get_endpoint(self, config=None, tenant_id=None, **kwargs):
         return resolve_config('tool_base_url', config, kwargs) + '/cicd/write'
 
     def _build_payload(self, payload, config=None, **kwargs):
@@ -660,7 +651,7 @@ class TerraformValidateTool(BaseToolService):
     tool_name = 'terraform_validate'
     idempotency = False
 
-    def get_endpoint(self, config=None, tenant_id=None, **kwargs):
+    def _get_endpoint(self, config=None, tenant_id=None, **kwargs):
         return resolve_config('tool_base_url', config, kwargs) + '/terraform/validate'
 
     def _build_payload(self, payload, config=None, **kwargs):

@@ -1,6 +1,27 @@
 # Changelog
 
-## Unreleased — documents for v1.2.1 (docs only)
+## v1.2.2 — Preparing for v1.3 (design note V13-01)
+
+Requires E2A `v1.2.2`. Nothing is removed.
+
+### Changed
+- **A2C's own SDLC agents** (`RequirementsAgent`, `CodeGenAgent`, `IaCAgent`, `CICDAgent`, `CodeCriticAgent`, and `SDLCAssistantAgent`) use the E2A v1.2 hooks (`state, ctx`): no v1.1 adapter runs in an A2C build.
+  - `approved_clouds` is read with `ctx.setting()`.
+  - The `approved_agents` checks are gone: they read a registry key whose default is `[]`, and E2A v1.2's governance is where agents are allowed.
+- **The four generator tools** implement `_get_endpoint`: no conformance D1 finding.
+- **G2C:** an `a2c_inherited` (SDLC) agent is generated on the v1.2 hooks.
+
+### Added
+- **The build report's `warnings`** say what v1.3 removes:
+  - `"e2a_contract": "1.1"` for Python (E2A v1.3 no longer runs v1.1 hooks);
+  - the Java v1.1 skeleton (`E2ABase.java`): A2C v1.3 defaults Java to `"1.2"`.
+- **CI:** the smoke tests run with warnings shown and fail if any uses E2A's v1.1 adapters.
+- **Smoke tests:** `smoke_test_g2c_v12.py` has 19 checks and `smoke_test_java12.py` 15.
+
+### Not changed
+- `SDLCWorkflow` keeps the v1.1 workflow form (a graph and `_get_agent`): E2A never deprecated it, and the SDLC chain's regeneration loop is not a declared `Steps` workflow.
+
+## Documents for v1.2.1 (docs only, merged after the v1.2.1 tag)
 
 - **A2C design:** new 5.8, evaluation sets and the release gate.
 - **G2C design:** new 5.7, Java on e2a-java.

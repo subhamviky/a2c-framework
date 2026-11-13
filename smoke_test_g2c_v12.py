@@ -95,4 +95,17 @@ with tempfile.TemporaryDirectory() as tmp:
     check('G-3 a single-agent Python request gets a v1.2 agent by default',
           'from e2a import BaseAgent' in agent and 'def _build_messages(self, state, ctx):' in agent)
 
+# v1.3 preparation (V13-01)
+import generator_templates as T
+sdlc = T.inherited('a2c_inherited', 'python', 'FinOpsAgent', 'from a2c_base import SDLCAssistantAgent', ['Cost'])
+check('V13-01 a2c_inherited (SDLC) agents are generated on the E2A v1.2 hooks',
+      'def _apply_policy(self, state, ctx)' in sdlc and 'super()._apply_policy(state, ctx)' in sdlc
+      and 'config=None' not in sdlc)
+old = json.loads((HERE / 'examples/requests/agents-python.json').read_text())
+old['harness'] = {'generator_type': 'e2a_inherited', 'e2a_contract': '1.1', 'agent_name': 'RouterAgent'}
+with tempfile.TemporaryDirectory() as tmp:
+    report = build(old, Path(tmp))
+    check('V13-01 a Python "1.1" request still builds, and the report says v1.3 removes it',
+          report['success'] and any('removed in v1.3' in w for w in report['warnings']))
+
 print(f'{passed} checks passed')

@@ -81,5 +81,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check('without e2a_contract a Java request stays on 1.1 (default unchanged), with no e2a-java',
           report['success'] and 'e2a-core' not in (root / 'pom.xml').read_text()
           and 'e2a-framework' not in (root / '.github/workflows/ci.yml').read_text())
+    check('V13-01: the build report says the Java v1.1 skeleton is removed in A2C v1.3',
+          any('removed in A2C v1.3' in w for w in report['warnings']))
 
 print(f'\n{passed} checks passed')

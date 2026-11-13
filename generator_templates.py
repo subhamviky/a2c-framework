@@ -191,7 +191,12 @@ def inherited(kind: str, runtime: str, agent: str, import_line: str, nfrs=None,
     base = 'SDLCAssistantAgent' if kind == 'a2c_inherited' else 'BaseAgent'
     nfrs = list(nfrs or [])
     if runtime == 'python':
-        policy = ('        super()._apply_policy(state, config, **kwargs)\n'
+        # a2c_inherited (SDLC agents) uses the E2A v1.2 hooks since A2C v1.2.2 (V13-01); the Python
+        # e2a_inherited "1.1" option keeps the v1.1 form, which E2A v1.3 removes
+        sig = '(self, state, ctx)' if kind == 'a2c_inherited' else '(self, state, config=None, **kwargs)'
+        rsig = '(self, response, state, ctx)' if kind == 'a2c_inherited' else '(self, response, state, config=None, **kwargs)'
+        esig = '(self, error, state, ctx)' if kind == 'a2c_inherited' else '(self, error, state, config=None, **kwargs)'
+        policy = ('        super()._apply_policy(state, ctx)\n'
                   f'        for nfr in {nfrs!r}:\n'
                   "            if nfr not in state.setdefault('mandatory_nfrs', []):\n"
                   "                state['mandatory_nfrs'].append(nfr)\n") if kind == 'a2c_inherited' else (
@@ -211,20 +216,20 @@ class {agent}({base}):
     config['llm_service']."""
     agent_name = '{agent}'
 
-    def _build_messages(self, state, config=None, **kwargs) -> list:
+    def _build_messages{sig} -> list:
         return [{{'role': 'system', 'content': 'You are {agent}.'}},
                 {{'role': 'user', 'content': str(state.get('context') or state.get('query', ''))}}]
 
-    def _apply_policy(self, state, config=None, **kwargs) -> None:
+    def _apply_policy{sig} -> None:
 {policy}
-    def _evaluate_output(self, response, state, config=None, **kwargs) -> float:
+    def _evaluate_output{rsig} -> float:
         text = (response or {{}}).get('text', '') if isinstance(response, dict) else str(response or '')
         return 1.0 if text.strip() else 0.0
 
-    def _fallback(self, state, config=None, **kwargs):
+    def _fallback{sig}:
         return {{'text': '', 'degraded': True}}
 
-    def _handle_error(self, error, state, config=None, **kwargs):
+    def _handle_error{esig}:
         logging.error(f'[{{self.agent_name}}] {{error}}')
         state.setdefault('errors', []).append(str(error))
         return state
