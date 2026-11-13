@@ -9,9 +9,9 @@
 | Framework | P0 — Phase Zero Project Bootstrap (composable sibling of A2C within the E2A family) |
 | Document type | Design Document (HLD + LLD) |
 | Author | Subham Gupta, Principal Platform Architect |
-| Source baseline | `subhamviky/a2c-framework` `v1.2.0` — `base_project_bootstrapper.py` (1 731 lines), `a2c_concurrency.py`, `a2c_settings.py`, `a2c_contracts.py` |
-| Date | 13 November 2026 (v1.2.0; baseline 7 November 2026) |
-| Status | Aligned to A2C v1.2.0 and its smoke tests (includes the v1.1.2 fixes and wave C note C-02) |
+| Source baseline | `subhamviky/a2c-framework` `v1.2.1` — `base_project_bootstrapper.py` (1 731 lines), `a2c_concurrency.py`, `a2c_settings.py`, `a2c_contracts.py` |
+| Date | 13 November 2026 (v1.2.1; v1.2.0 the same day; baseline 7 November 2026) |
+| Status | Aligned to A2C v1.2.1 and its smoke tests (includes the v1.1.2 fixes, wave C notes C-02 and C-04, and wave D note D-01) |
 
 ## 1. Introduction
 
@@ -236,6 +236,9 @@ P0 is a library, not a service. It runs in-process on a workstation, a CI runner
 | `settings` | List[dict] | Normalised app settings (from `a2c_sdlc.settings`, set by `aidlc-build`; v1.2). |
 | `contract_schemas` | List[{path, schema}] | Loaded JSON-Schema contracts (from `a2c_sdlc.contracts`, set by `aidlc-build`; v1.2). |
 | `repository_layout` | str | `single` (default) or `monorepo`; applied by `aidlc-build` after the build (v1.2). |
+| `evaluation` | dict | `{set, redteam, threshold}` (from `a2c_sdlc.evaluation`; v1.2.1, Python on E2A v1.2): a generated `release/gate.py`, the evaluation files and a CI step. |
+| `release_gate` | bool | Set by `aidlc-build` for an E2A v1.2 Python service: the CI runs E2A's generic release gate (v1.2.1). |
+| `e2a_java` | str | The e2a-java version (v1.2.1, set by `aidlc-build` for a Java v1.2 request): the generated CI and Dockerfile install e2a-java from E2A's tag before the build. |
 | `output_path` | str | Parent directory of the project root (request › config › env › `./`). |
 | `license` | str | `Apache-2.0` (default), `MIT`, `PROPRIETARY` (no file). |
 | `git_init`, `include_docker`, `include_makefile` | bool | Optional artifacts (default true). |

@@ -9,9 +9,9 @@
 | Framework | G2C — Generate-to-Class (top layer of the E2A / A2C / P0 framework stack) |
 | Document type | Design Document (HLD + LLD) |
 | Author | Subham Gupta, Principal Platform Architect |
-| Source baseline | `subhamviky/a2c-framework` `v1.2.0` — `g2c_v12.py` (v1.2), `base_generator_agent.py`, `inherited_generator.py`, the four generators, `generator_critic_agent.py`, `generator_templates.py`, `generator_factory.py`, `developer_platform_workflow.py`, `generator_api_router.py`, `typedicts.py`, `a2c_concurrency.py` |
-| Date | 13 November 2026 (v1.2.0; baseline 7 November 2026) |
-| Status | Aligned to A2C v1.2.0 and its smoke tests (wave C, design note C-01) |
+| Source baseline | `subhamviky/a2c-framework` `v1.2.1` — `g2c_v12.py` (v1.2), `g2c_java12.py` (v1.2.1), `base_generator_agent.py`, `inherited_generator.py`, the four generators, `generator_critic_agent.py`, `generator_templates.py`, `generator_factory.py`, `developer_platform_workflow.py`, `generator_api_router.py`, `typedicts.py`, `a2c_concurrency.py` |
+| Date | 13 November 2026 (v1.2.1; v1.2.0 the same day; baseline 7 November 2026) |
+| Status | Aligned to A2C v1.2.1 and its smoke tests (wave C, design note C-01; wave D, design note D-01) |
 
 ## 1. Introduction
 
@@ -257,6 +257,30 @@ The first agent is the primary one. It goes through `generate()` as before (clai
 
 The `approved_agents` check of v1.1 skeletons is no longer generated: E2A v1.2's governance stages cover it. `aidlc-build` adds `e2a-framework` `v1.2.0` to the project's dependencies, because the generated code and tests import `e2a`.
 
+### 5.7 Java on e2a-java (v1.2.1)
+
+Design note D-01 (G-4). E2A v1.2.2 ships e2a-java, the E2A runtime for Java. G2C generates Java code against it, from the same declaration as Python (`harness.agents`, `workflow`, `governance`). A Java request opts in with `"e2a_contract": "1.2"`; the Java default stays `1.1` until v1.3.
+
+**Table 4 — What a Java v1.2 request generates (`g2c_java12.py`)**
+
+| File | Content |
+|---|---|
+| `agents/<Agent>.java`, one per agent | extends `com.subhamviky.e2a.agent.BaseAgent`. `kind: model`: `buildMessages`, plus an `evaluateOutput` that parses the JSON and checks the `output_schema`'s required fields and enums, and `fallback`. `kind: deterministic`: `buildMessages` returns `null`. `reads`: `prepare(state, ctx, io)`. `writes`: `act(state, ctx, io)`. |
+| `workflow/<Workflow>.java` | `buildWorkflow(ctx)` returns `Steps.of(Step…, Route….materialStep())`; a `generateIdempotencyKey` stub |
+| `governance/ServiceGovernance.java` | `Governance` with the declared stages (e2a-java has `capacity`, `firewall` and `approval`; any other is refused, naming these) and each agent's tools |
+| `tools/<Tool>Tool.java` | a `ToolService` stub per tool, `material()` for writes |
+| `src/test/java/.../<Agent>ContractTest.java` | an `AgentContract` (e2a-test) per agent, with fake tools and a simulated model answering the schema's example |
+
+- **No `E2ABase.java` is generated:** this is Case 2A for Java, so the base is reused.
+- **What P0 adds:**
+  - `com.subhamviky.e2a:e2a-core` and `e2a-test` (test), as Maven coordinates;
+  - a step in the generated CI and Dockerfile that installs e2a-java from E2A's tag.
+- **The critic:**
+  - checks the hooks (`buildMessages`; with a model step, also `evaluateOutput` and `fallback`) and the e2a-java base;
+  - leaves compilation to the project's `mvn verify`, because e2a-java is not on a standalone `javac`'s classpath.
+- **R1 and R2 need no checker in Java:** `run()` is `final` and the hooks are `protected`, so the compiler enforces both.
+- **Verification:** `smoke_test_java12.py` (14 checks). It includes `mvn verify` of a generated three-agent project, whose 14 tests pass.
+
 ## 6. Data Contracts
 
 ![Figure 8 — GeneratorRequest, GeneratorResult and the embedded P0 contracts](images/04_typeddicts.png)
@@ -265,7 +289,7 @@ The `approved_agents` check of v1.1 skeletons is no longer generated: E2A v1.2's
 
 ### 6.1 GeneratorRequest
 
-**Table 4 — GeneratorRequest fields**
+**Table 5 — GeneratorRequest fields**
 
 | Group | Fields and meaning |
 |---|---|
@@ -354,7 +378,7 @@ Resolution order is config › environment › default.
 | Module data | `RUNTIME_PATTERNS[runtime]` — `abstract_base`, `abstract_method`, `private_prefix`, `protected_prefix`, `type_hints`, `extension`. |
 | Invariants | INV-01 to INV-06, INV-09. |
 
-**Table 5 — BaseGeneratorAgent methods**
+**Table 6 — BaseGeneratorAgent methods**
 
 | Method | Kind | Signature → returns | Contract |
 |---|---|---|---|
@@ -405,7 +429,7 @@ Resolution order is config › environment › default.
 
 *Figure 10 — Inherited generators: internal phases*
 
-**Table 6 — BaseInheritedClassGenerator methods**
+**Table 7 — BaseInheritedClassGenerator methods**
 
 | Method | Contract |
 |---|---|
@@ -425,11 +449,11 @@ Resolution order is config › environment › default.
 
 | Method | Signature → returns | Contract |
 |---|---|---|
-| `review` | `(response, request) → {score, critic_type, missing, passed, findings}` | Rules of Table 7 for `config['critic_type']` or `request['generator_type']`; Python is parsed with `ast` (a syntax error scores 0). |
+| `review` | `(response, request) → {score, critic_type, missing, passed, findings}` | Rules of Table 8 for `config['critic_type']` or `request['generator_type']`; Python is parsed with `ast` (a syntax error scores 0). |
 | `score` | `(response, request) → float` | `review()['score']`. |
 | `concurrency_findings` | `(source) → List[str]` | Shared-gateway rule violations. |
 
-**Table 7 — Critic rules**
+**Table 8 — Critic rules**
 
 | critic_type | Checks | Deduction |
 |---|---|---|
@@ -517,7 +541,7 @@ Two axes are evaluated from repository state before any generation: **Axis A** �
 | 2A | Proven abstractions, new service | `path`/`package` with `scaffold`; then the A2C second phase for fresh IaC/CI. |
 | 2B | Greenfield | `generate` with `scaffold`; then the A2C second phase. |
 
-**Table 8 — Phase Trigger errors**
+**Table 9 — Phase Trigger errors**
 
 | ID | Severity | Error | Remedy |
 |---|---|---|---|
@@ -528,7 +552,7 @@ Two axes are evaluated from repository state before any generation: **Axis A** �
 | E-05 | Medium | `DevRequest` / `GeneratorRequest` confused | `GeneratorRequest` for generators; `DevRequest` for A2C. |
 | E-06 | Low | Legacy branch not frozen | Tag `legacy-non-g2c` before the first run; it is the counterfactual baseline. |
 
-**Table 9 — Reconciling Phase Trigger terminology with canonical contracts**
+**Table 10 — Reconciling Phase Trigger terminology with canonical contracts**
 
 | Phase Trigger Reference wording | Canonical contract |
 |---|---|
@@ -598,7 +622,7 @@ GeneratorFactory.register('e2a_tool', E2AToolServiceGenerator)
 
 ## 13. Verification
 
-**Table 10 — Evidence (v1.2.0)**
+**Table 11 — Evidence (v1.2.0)**
 
 | Suite | What it shows |
 |---|---|
@@ -612,7 +636,7 @@ GeneratorFactory.register('e2a_tool', E2AToolServiceGenerator)
 
 The stubs recorded against the earlier baseline are replaced on this branch: public hook names and a five-step `generate()`; no model call; critic and generator scores fixed at 1.0; nothing written; `DeveloperPlatformWorkflow()` without config and with a wrapped result; no abstract chain and no P0; a factory without config or `register`; a health-only router; incomplete typedicts; and the missing `a2c_concurrency` module.
 
-**Table 11 — Remaining observations**
+**Table 12 — Remaining observations**
 
 | ID | Observation | Effect | Recommendation |
 |---|---|---|---|
@@ -621,7 +645,7 @@ The stubs recorded against the earlier baseline are replaced on this branch: pub
 | O-3 | `source='prompt'` is rejected by the generators. | Free text goes in `user_prompt`; no structured extraction of the request from prose. | Add prompt resolution through the gateway if needed. |
 | O-4 | Template-mode skeletons are minimal. | Useful for structure and offline runs, not as finished code. | Treat template output as a starting point; regenerate with a gateway. |
 | O-5 | The `local` fast path (no store) reuses any existing file at the abstract output location. | Two different `base_class_name`s targeting one directory share a file. | Use distinct `abstract_class_output_path`s, or a store. |
-| O-6 | The Phase Trigger Reference uses legacy names and flags. | Readers may look for methods that do not exist. | Use Table 9; the reference carries a v1.2 note. |
+| O-6 | The Phase Trigger Reference uses legacy names and flags. | Readers may look for methods that do not exist. | Use Table 10; the reference carries a v1.2 note. |
 | O-7 | All tests use in-memory doubles. | Not validated against a live store, gateway or load. | Add adapter tests. |
 | O-8 | Only the primary agent passes through the model and the critic; the other generated files come from deterministic templates. | They are correct skeletons with TODOs, not domain code. | Fill the TODOs; or declare each agent in its own request to have each one generated by the model. |
 | O-9 | Java, Node and Go stay on the v1.1 contract. | No E2A v1.2 runtime outside Python. | `e2a-java` is wave D (G-4). |
