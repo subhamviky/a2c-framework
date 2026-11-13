@@ -103,9 +103,7 @@ check('V13-01 a2c_inherited (SDLC) agents are generated on the E2A v1.2 hooks',
       and 'config=None' not in sdlc)
 old = json.loads((HERE / 'examples/requests/agents-python.json').read_text())
 old['harness'] = {'generator_type': 'e2a_inherited', 'e2a_contract': '1.1', 'agent_name': 'RouterAgent'}
-with tempfile.TemporaryDirectory() as tmp:
-    report = build(old, Path(tmp))
-    check('V13-01 a Python "1.1" request still builds, and the report says v1.3 removes it',
-          report['success'] and any('removed in v1.3' in w for w in report['warnings']))
+check('v1.3: a Python "1.1" request is refused, naming the removal',
+      refused(lambda: build(old, Path(tempfile.mkdtemp())), 'e2a_contract 1.1 was removed in A2C v1.3'))
 
 print(f'{passed} checks passed')

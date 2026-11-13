@@ -317,6 +317,8 @@ A2C version. Examples: [`examples/requests/`](examples/requests/).
 
 | a2c-framework | e2a-framework | capability-oriented-dsa (used by generated services) |
 |---|---|---|
+| `v1.3.0` | `v1.3.0` (and e2a-java `1.3.0` for Java) | `v0.2.x`, `v0.3.x` |
+| `v1.2.2` | `v1.2.2` | `v0.2.x`, `v0.3.x` |
 | `v1.2.1` | `v1.2.2` | `v0.2.x`, `v0.3.x` |
 | `v1.2.0` | `v1.2.0` | `v0.2.x`, `v0.3.x` |
 | `v1.1.2` | `v1.1.2` | `v0.2.x` |

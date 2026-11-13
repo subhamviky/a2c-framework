@@ -44,9 +44,10 @@ check('structural critic rejects bad output after 3 attempts', r['status'] == 'c
 check('nothing written on critic failure', not os.listdir(d))
 
 # ---- 3 inherited with scaffold: abstract -> P0 inline -> class in the scaffold
+#      (v1.3: a2c_inherited; e2a_inherited imports the installed e2a and has no base to chain)
 out = tempfile.mkdtemp()
 wf = DeveloperPlatformWorkflow(config={})       # the constructor AI-DLC uses
-req = {'generator_type': 'e2a_inherited', 'runtime': 'python', 'e2a_contract': '1.1', 'agent_name': 'RefundAgent',
+req = {'generator_type': 'a2c_inherited', 'runtime': 'python', 'agent_name': 'RefundAgent',
        'output_path': out, 'platform': 'aws', 'tenant_id': 't1',
        'scaffold': {'project_name': 'Refunds', 'package_name': 'refunds'}}
 cfg = {'a2c': {'enabled': True, 'project_type': 'FastAPI Microservice'}}
@@ -61,7 +62,7 @@ check('dev_request handed off for A2C', r['scaffold_result']['dev_request']['pro
       and r['scaffold_result']['dev_request']['tenant_id'] == 't1')
 check('abstract class generated fresh by this request', r['abstract_class_generated_fresh'] is True)
 src = open(cls).read()
-check('generated class extends BaseAgent and keeps run()', 'class RefundAgent(BaseAgent)' in src and 'def run(' not in src)
+check('generated class extends SDLCAssistantAgent and keeps run()', 'class RefundAgent(SDLCAssistantAgent)' in src and 'def run(' not in src)
 
 # ---- 4 a second project of the same tenant shares the abstract class
 r2 = wf.generate({**req, 'agent_name': 'ChargeAgent', 'scaffold': {'project_name': 'Charges', 'package_name': 'charges'}}, cfg)
@@ -86,14 +87,20 @@ src = open(r['generated_files'][-1]).read()
 check('team agent extends SDLCAssistantAgent and adds its NFRs on top',
       'class TeamSDLCAgent(SDLCAssistantAgent)' in src and 'super()._apply_policy' in src and 'DoubleEntryLedger' in src)
 
-# ---- 6 package source: no abstract generation, package import
+# ---- 6 package source: no abstract generation, package import (v1.3: always so for e2a_inherited)
 out6 = tempfile.mkdtemp()
-r = DeveloperPlatformWorkflow().generate({'generator_type': 'e2a_inherited', 'runtime': 'python', 'e2a_contract': '1.1', 'agent_name': 'PkgAgent',
+r = DeveloperPlatformWorkflow().generate({'generator_type': 'a2c_inherited', 'runtime': 'python', 'agent_name': 'PkgAgent',
                                           'output_path': out6, 'abstract_class_source': 'package',
-                                          'package_name': 'e2a_framework'}, {})
+                                          'package_name': 'a2c_framework'}, {})
 check('package source imports from the package and generates no base',
-      r['success'] and 'from e2a_framework import BaseAgent' in open(r['generated_files'][0]).read()
+      r['success'] and 'from a2c_framework import SDLCAssistantAgent' in open(r['generated_files'][0]).read()
       and not os.path.exists(os.path.join(out6, 'common')))
+out6b = tempfile.mkdtemp()
+r = DeveloperPlatformWorkflow().generate({'generator_type': 'e2a_inherited', 'runtime': 'python', 'agent_name': 'PkgAgent',
+                                          'output_path': out6b}, {})
+check('v1.3: e2a_inherited imports the installed e2a package and generates no base',
+      r['success'] and 'from e2a import' in open(r['generated_files'][-1]).read()
+      and not os.path.exists(os.path.join(out6b, 'common')))
 
 # ---- 7 Java inherited class lands in the Maven tree
 out7 = tempfile.mkdtemp()
@@ -101,8 +108,8 @@ r = DeveloperPlatformWorkflow().generate({'generator_type': 'e2a_inherited', 'ru
                                           'output_path': out7, 'platform': 'aws',
                                           'scaffold': {'project_name': 'Settle', 'group_id': 'com.acme.settle',
                                                        'artifact_id': 'settle', 'project_type': 'spring_boot'}}, {})
-check('Java class under src/main/java/<group>/service', r['success'] and
-      r['generated_files'][-1].endswith('src/main/java/com/acme/settle/service/SettlementAgent.java'))
+check('Java class under src/main/java/<group>/agents (v1.3: e2a-java layout, the default)', r['success'] and
+      any(f.endswith('src/main/java/com/acme/settle/agents/SettlementAgent.java') for f in r['generated_files']))
 r = DeveloperPlatformWorkflow().generate({'generator_type': 'e2a_inherited', 'runtime': 'java', 'agent_name': 'NoType',
                                           'output_path': out7, 'scaffold': {'project_name': 'X', 'group_id': 'g', 'artifact_id': 'x'}}, {})
 check('P0 failure (Java without project_type) is a typed scaffold_failed', r['status'] == 'scaffold_failed' and not r['success'])
@@ -159,7 +166,7 @@ try:
     check('GET /health', c.get('/api/v1/g2c/health').json() == {'status': 'ok'})
     resp = c.post('/api/v1/g2c/e2a/abstract', json={'runtime': 'node', 'output_path': d9}).json()
     check('POST /e2a/abstract generates', resp['success'] and resp['generated_files'][0].endswith('e2aBase.ts'))
-    resp = c.post('/api/v1/g2c/generate', json={'generator_type': 'e2a_inherited', 'runtime': 'python', 'e2a_contract': '1.1',
+    resp = c.post('/api/v1/g2c/generate', json={'generator_type': 'a2c_inherited', 'runtime': 'python',
                                                'agent_name': 'ApiAgent', 'output_path': d9})
     check('POST /generate chains through the workflow', resp.status_code == 200 and resp.json()['success'])
     check('invalid request -> 400', c.post('/api/v1/g2c/e2a/abstract', json={'runtime': 'cobol', 'output_path': d9}).status_code == 400)

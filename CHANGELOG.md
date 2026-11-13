@@ -1,6 +1,27 @@
 # Changelog
 
-## Unreleased — CI fix
+## v1.3.0 — v1.1 generation removed (design note V13-01)
+
+Requires E2A `v1.3.0` (and, for Java, e2a-java `1.3.0`, installed from E2A's tag).
+
+### Removed
+- **`"e2a_contract": "1.1"`** for `e2a_inherited`, Python and Java. A request with it is refused before anything is written: `e2a_contract 1.1 was removed in A2C v1.3`. E2A v1.3 refuses the v1.1 hooks at class definition, so the generated code could not run.
+- **The Java v1.1 skeleton** (`E2ABase.java` copied into the project, with an inherited class on it). Java agents are generated against e2a-java.
+- **The v1.2.2 build-report warnings** about both: there is nothing left to warn about.
+- **The v1.1 branch of the Python inherited template** (`generator_templates.inherited`): both kinds now emit the v1.2 hooks.
+
+### Changed
+- **Java defaults to `"e2a_contract": "1.2"`**, like Python: a Java `e2a_inherited` request without the field gets the e2a-java project (agents, workflow, governance, tools, `AgentContract` tests, a pom on `e2a-core`/`e2a-test`, CI and a Dockerfile that install e2a-java first).
+- **Pins:** `e2a-framework` `@v1.3.0` in `pyproject.toml`; CI checks out E2A `v1.3.0`; `g2c_java12.E2A_JAVA_VERSION` is `1.3.0`.
+- **Smoke tests:** the abstract-chain checks (shared base ownership, replay, compensation, the AI-DLC build) run on `a2c_inherited`, the one type that still chains the E2A and A2C base classes. `e2a_inherited` imports the installed `e2a`, so it has no base to share.
+
+### Added
+- **CI:** `python -m e2a.conformance` over A2C's sources; strict by default in E2A v1.3, so an R2 or D1 finding fails the job.
+
+### Not changed
+- `a2c_inherited`, the standalone `e2a_abstract` / `a2c_abstract` generators (Python, Java, Node, Go), and `SDLCWorkflow`'s v1.1 workflow form, which E2A keeps.
+
+## Unreleased — CI fix (released with v1.3.0)
 
 - **The CI guard** (v1.2.2) matched any line containing "removed in v1.3". That includes the warning A2C's own build report gives on purpose for a Python `"e2a_contract": "1.1"` request, so `smoke_test_g2c_v12` failed the job. It now matches E2A's adapter warning ("uses the v1.1 keyword signature"). CI only: the package is unchanged.
 

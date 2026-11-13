@@ -2,7 +2,7 @@
 and contract tests generated against e2a-java (com.subhamviky.e2a), from the same declaration as
 Python (harness.agents / workflow / governance, checked by g2c_v12.normalize).
 
-Opt in with "e2a_contract": "1.2" on a Java request; Java's default stays "1.1" until v1.3.
+Since A2C v1.3 this is the default for a Java e2a_inherited request ("1.1" was removed).
 """
 import json
 from typing import Any, Dict, List
@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 import g2c_v12
 from g2c_v12 import HarnessError, example, pascal
 
-E2A_JAVA_VERSION = '1.2.2'
+E2A_JAVA_VERSION = '1.3.0'
 STAGES = {        # the stages e2a-java has -> (expression, TODO comment)
     'capacity': ('new CapacityStage(() -> true)', 'TODO: admit only while the service has capacity'),
     'firewall': ('new FirewallStage(List.of("ignore (all )?(previous|prior) instructions"), 4000, List.of("text"))',

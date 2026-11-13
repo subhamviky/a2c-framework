@@ -73,15 +73,16 @@ with tempfile.TemporaryDirectory() as tmp:
     else:
         print('SKIP mvn verify of the generated project: Maven or e2a-java (local repository) not available')
 
-legacy = json.loads((HERE / 'examples/requests/java-azure-service.json').read_text())
-legacy['a2c_sdlc'].pop('contracts', None)
+plain = json.loads((HERE / 'examples/requests/java-azure-service.json').read_text())
+plain['a2c_sdlc'].pop('contracts', None)
 with tempfile.TemporaryDirectory() as tmp:
-    report = build(legacy, Path(tmp))
+    report = build(copy.deepcopy(plain), Path(tmp))
     root = Path(tmp) / 'image-java-service'
-    check('without e2a_contract a Java request stays on 1.1 (default unchanged), with no e2a-java',
-          report['success'] and 'e2a-core' not in (root / 'pom.xml').read_text()
-          and 'e2a-framework' not in (root / '.github/workflows/ci.yml').read_text())
-    check('V13-01: the build report says the Java v1.1 skeleton is removed in A2C v1.3',
-          any('removed in A2C v1.3' in w for w in report['warnings']))
+    check('v1.3: a Java request without e2a_contract is generated against e2a-java (the default is "1.2")',
+          report['success'] and '<artifactId>e2a-core</artifactId>' in (root / 'pom.xml').read_text()
+          and not list(root.rglob('E2ABase.java')))
+plain['harness']['e2a_contract'] = '1.1'
+check('v1.3: a Java "1.1" request is refused (the E2ABase.java skeleton was removed)',
+      refused(lambda: build(plain, Path(tempfile.mkdtemp())), 'e2a_contract 1.1 was removed in A2C v1.3'))
 
 print(f'\n{passed} checks passed')

@@ -185,17 +185,26 @@ for trial in range(200):
 check('200 racing releases: never more than one deletion', max(wins) <= 1)
 
 # ---- 13 workflow: chain, registry, compensation
+# v1.3: the chain is a2c_inherited (E2A base, A2C base, subclass: three model calls); the template
+# model answers each prompt with its curated class, and a counter wraps it
+from a2c_template_llm import build_template_llm
+class ChainLLM:
+    def __init__(self):
+        self.inner, self.calls = build_template_llm(), 0
+    async def process_inference(self, messages, **kw):
+        self.calls += 1
+        return await self.inner.process_inference(messages, **kw)
 tmp = tempfile.mkdtemp()
-store, llm = InMemoryClaimStore(), FakeLLMService()
+store, llm = InMemoryClaimStore(), ChainLLM()
 wf = DeveloperPlatformWorkflow(artifact_registry=InMemoryArtifactRegistry())
 cfg = {'idempotency_store': store, 'llm_service': llm}
-rq = {'generator_type': 'e2a_inherited', 'runtime': 'python', 'e2a_contract': '1.1', 'agent_name': 'Refund',
+rq = {'generator_type': 'a2c_inherited', 'runtime': 'python', 'agent_name': 'Refund',
       'output_path': tmp + '/', 'tenant_id': 't1'}
 wreq = dict(rq)
 out = wf.generate(wreq, cfg)
-check('workflow chains abstract then inherited', out['success'] and out['status'] == 'generated' and llm.calls == 2)
+check('workflow chains abstract then inherited', out['success'] and out['status'] == 'generated' and llm.calls == 3)
 out2 = wf.generate(dict(rq), cfg)
-check('workflow replay is the idempotent no-op (no model call)', out2.get('replayed') and llm.calls == 2)
+check('workflow replay is the idempotent no-op (no model call)', out2.get('replayed') and llm.calls == 3)
 shared_path = out['abstract_class_path']
 abstract_path = tmp + '/common/e2a_base.py'
 os.makedirs(tmp + '/common', exist_ok=True); open(abstract_path, 'w').write('# abstract')

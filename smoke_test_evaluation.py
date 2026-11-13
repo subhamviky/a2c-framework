@@ -109,12 +109,4 @@ with tempfile.TemporaryDirectory() as tmp:
           done.returncode == 0 and result['stages']['ragas_gate'].startswith('NOT_CONFIGURED'),
           done.stdout + done.stderr)
 
-legacy = copy.deepcopy(BASE)
-legacy['harness'] = {'generator_type': 'e2a_inherited', 'e2a_contract': '1.1', 'agent_name': 'RouterAgent'}
-with tempfile.TemporaryDirectory() as tmp:
-    report = build(legacy, Path(tmp))
-    ci = (Path(tmp) / 'agents-service/.github/workflows/ci.yml').read_text()
-    check('an E2A v1.1 service gets no release-gate step (it does not depend on e2a)',
-          report['success'] and 'release' not in ci)
-
 print(f'\n{passed} checks passed')

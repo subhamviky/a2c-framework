@@ -1,6 +1,8 @@
 """Integration: E2A's AIDLCPipelineOrchestrator running the REAL G2C, P0
 and A2C modules of this repository (no stubs) — Phase A (G2C + P0 inline),
 Phase B (A2C SDLCWorkflow), Phase C (E2A static verification).
+v1.3: the chain is a2c_inherited (E2A base, A2C base, SDLC subclass); e2a_inherited
+imports the installed e2a package and generates no base, so it has no chain to share.
 Needs e2a-framework/reference (E2A_REFERENCE_PATH or a sibling checkout).
 Run: python smoke_test_aidlc_integration.py"""
 import json, os, sys, tempfile, logging
@@ -26,7 +28,9 @@ class LLM(BaseLLMAgentService):
         LLM.calls += 1
         sysm, user = messages[0]['content'], messages[-1]['content']
         if 'E2A Architecture Framework base abstract' in sysm: t = T.e2a_abstract('python')
-        elif 'inherited E2A agent' in sysm: t = T.inherited('e2a_inherited', 'python', 'SettlementAgent', 'from common.e2a_base import BaseAgent')
+        elif 'A2C base abstract' in sysm: t = T.a2c_abstract('python')
+        elif 'inherited A2C agent' in sysm: t = T.inherited('a2c_inherited', 'python', 'SettlementAgent',
+                                                           'from common.a2c_base import SDLCAssistantAgent')
         elif 'requirements architect' in sysm: t = 'Clean Architecture layers\n' + '\n'.join(MANDATORY_NFRS)
         elif 'infrastructure engineer' in sysm: t = 'resource "aws_sqs_queue" "dlq" { name = "x" }\n' * 4
         elif 'CI/CD engineer' in sysm: t = 'on:\n push:\npermissions:\n  id-token: write\njobs:\n  scan: [trivy]\n  deploy: [x]\n'
@@ -41,7 +45,7 @@ from e2a_inmemory_adapters import InMemoryTransactionalStore
 cfg = {'llm_service': LLM(), 'idempotency_store': InMemoryIdempotencyStore(),
        'artifact_store': InMemoryTransactionalStore()}
 req = {'tenant_id': 't1',
-       'harness': {'generator_type': 'e2a_inherited', 'runtime': 'python', 'e2a_contract': '1.1', 'agent_name': 'SettlementAgent',
+       'harness': {'generator_type': 'a2c_inherited', 'runtime': 'python', 'agent_name': 'SettlementAgent',
                    'output_path': out, 'platform': 'aws'},
        'context': {'project_name': 'SettlementEngine', 'package_name': 'settlement_engine', 'runtime': 'python',
                    'build_tool': 'poetry', 'platform': 'aws'},

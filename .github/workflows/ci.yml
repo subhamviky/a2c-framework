@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: subhamviky/e2a-framework
-          ref: v1.2.2
+          ref: v1.3.0
           path: e2a-framework
       - uses: actions/setup-python@v6
         with:
@@ -41,6 +41,8 @@ jobs:
           cache: maven
       - name: Install e2a-java from the E2A checkout (smoke_test_java12 builds a generated project against it)
         run: mvn -B -q -f e2a-framework/java/pom.xml install -DskipTests
+      - name: E2A conformance (v1.3 is strict by default; R2 and D1 are errors)
+        run: python -m e2a.conformance $(git ls-files '*.py' | grep -v '^smoke_test')
       - name: Run the smoke tests
         shell: bash
         env:

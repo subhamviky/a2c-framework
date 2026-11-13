@@ -35,10 +35,9 @@ class BaseInheritedClassGenerator(BaseGeneratorAgent):
     kind = ''                           # 'e2a_inherited' | 'a2c_inherited'
 
     def _v12(self, request) -> bool:
-        """G-3: a Python E2A agent targets the E2A v1.2 contract unless the request asks for 1.1.
-        A Java E2A agent opts in with "e2a_contract": "1.2" (e2a-java, v1.2.1, note D-01); its default
-        stays 1.1 until v1.3. A2C's own SDLC agents stay on 1.1."""
-        v12_possible = request.get('runtime', 'python') == 'python' and self.kind == 'e2a_inherited'
+        """An E2A agent (Python, or Java on e2a-java) targets the E2A v1.2 contract; "1.1" was removed
+        in A2C v1.3 (_validate_request refuses it). A2C's own SDLC agents keep their kind's default."""
+        v12_possible = request.get('runtime', 'python') in ('python', 'java') and self.kind == 'e2a_inherited'
         default = '1.2' if v12_possible else '1.1'
         return request.setdefault('e2a_contract', default) == '1.2'
 
@@ -48,6 +47,8 @@ class BaseInheritedClassGenerator(BaseGeneratorAgent):
             request['agent_name'] = first if isinstance(first, str) else first.get('name')
         if not all(k in request for k in ("runtime", "agent_name", "output_path")):
             return False
+        if self.kind == 'e2a_inherited' and not self._v12(request):
+            return False                # v1.3: e2a_contract 1.1 was removed (E2A v1.3 refuses v1.1 hooks)
         if self._v12(request):
             if request.get('runtime', 'python') not in ('python', 'java') or self.kind != 'e2a_inherited':
                 return False            # E2A v1.2 exists for Python and (e2a-java) Java

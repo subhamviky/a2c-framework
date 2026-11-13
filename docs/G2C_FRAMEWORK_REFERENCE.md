@@ -417,7 +417,7 @@ Generates the A2C base abstract class file — `SDLCAssistantAgent`, `DevRequest
 
 Generates a complete E2A inherited class project in a single call: resolves or generates the abstract class, runs P0 scaffolding to create the project structure, then generates the concrete inherited agent/workflow/RAG/tool class implementing the developer's business logic.
 
-> **v1.2.** For Python, the default `e2a_contract` is `"1.2"`: the abstract class is not generated (the project depends on the `e2a` package, `e2a-framework` v1.2.0), and `harness.agents`, `harness.workflow` and `harness.governance` generate several agents, a declared workflow, a governance service, validation stubs, tool stubs and contract tests in one call (Section 18). `"e2a_contract": "1.1"` keeps the output described here. Java stays on 1.1 until `e2a-java` exists.
+> **v1.2.** For Python, the default `e2a_contract` is `"1.2"`: the abstract class is not generated (the project depends on the `e2a` package, `e2a-framework` v1.2.0), and `harness.agents`, `harness.workflow` and `harness.governance` generate several agents, a declared workflow, a governance service, validation stubs, tool stubs and contract tests in one call (Section 18). `"e2a_contract": "1.1"` kept the output described here until A2C v1.3.0, which removes it (E2A v1.3 refuses the v1.1 hooks). Since v1.3.0 Java defaults to `"1.2"` too, against e2a-java. The abstract-class chain described here remains for `a2c_inherited` (E2A base, A2C base, SDLC subclass) and for the standalone `e2a_abstract` generator.
 
 | Field | Value |
 |:---|:---|
@@ -986,12 +986,12 @@ Since A2C v1.2.0, `E2AInheritedClassGenerator` generates code for the E2A v1.2 c
 
 | Field | Meaning | Default |
 |:---|:---|:---|
-| `harness.e2a_contract` | `"1.2"` or `"1.1"` | `"1.2"` for Python `e2a_inherited`; `"1.1"` for Java and for `a2c_inherited` |
+| `harness.e2a_contract` | `"1.2"` | `"1.2"` for Python and Java `e2a_inherited` (v1.3.0: `"1.1"` is refused). `a2c_inherited` generates SDLC subclasses on the v1.2 hooks and ignores it |
 | `harness.agents` | list of `{name, kind: "model" \| "deterministic", reads, writes, output_schema}` | one agent from `harness.agent_name` |
 | `harness.workflow` | `{name, steps: [{step, agent} \| {step, route_by, agents, material}]}` | no workflow |
 | `harness.governance` | `{stages: [...]}` (E2A governance stages) | E2A defaults |
 
-A Java request with `"e2a_contract": "1.2"` is refused: `e2a_contract 1.2 is available for Python only`.
+*(Before v1.2.1, a Java request with `"e2a_contract": "1.2"` was refused. Since v1.3.0 it is the Java default.)* An `e2a_inherited` request with `"e2a_contract": "1.1"` is refused: `e2a_contract 1.1 was removed in A2C v1.3`.
 
 ### 18.2 What is generated
 
@@ -1017,7 +1017,7 @@ P0 no longer generates `generated/service.py` or `…ServiceService.java`; no pr
 
 ## 19. Java on e2a-java (v1.2.1)
 
-**Opting in:** a Java `e2a_inherited` request with `"e2a_contract": "1.2"` generates against e2a-java (`com.subhamviky.e2a`, shipped with E2A v1.2.2), from the same `agents` / `workflow` / `governance` declaration as Python. The Java default stays `"1.1"` until v1.3.
+**Opting in:** a Java `e2a_inherited` request with `"e2a_contract": "1.2"` generates against e2a-java (`com.subhamviky.e2a`, shipped with E2A v1.2.2), from the same `agents` / `workflow` / `governance` declaration as Python. Since A2C v1.3.0 this is the Java default.
 
 **What is generated (`g2c_java12.py`):**
 
