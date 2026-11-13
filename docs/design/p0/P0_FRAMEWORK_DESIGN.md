@@ -2,16 +2,16 @@
 
 ### High-Level and Low-Level Design
 
-*This document describes P0, the Phase Zero project bootstrap framework, from problem statement to method-level contract. P0 turns one declarative ScaffoldRequest into a correct-by-construction project workspace — build manifest, directory tree, git, environment, README, licence, container and Makefile — guarded by an atomic claim, and optionally hands a populated DevRequest to A2C. It is written so that a reader can form a complete mental model of P0 without opening the Python source, which remains the reference for line-level detail.*
+*This document describes P0, the Phase Zero project bootstrap framework, from problem statement to method-level contract. P0 turns one declarative ScaffoldRequest into a correct-by-construction project workspace — build manifest, directory tree, git, environment, README, licence, container and Makefile — guarded by an atomic claim, and optionally hands a populated DevRequest to A2C. Since v1.2 it also writes what a request declares: app settings into the code and the environment template, models from JSON-Schema contracts, and Maven coordinates into the pom. It is written so that a reader can form a complete mental model of P0 without opening the Python source, which remains the reference for line-level detail.*
 
 | | |
 |---|---|
 | Framework | P0 — Phase Zero Project Bootstrap (composable sibling of A2C within the E2A family) |
 | Document type | Design Document (HLD + LLD) |
 | Author | Subham Gupta, Principal Platform Architect |
-| Source baseline | `subhamviky/a2c-framework` branch `fix/g2c-p0-a2c-contracts` @ c0583ac (on `main` e546cc5) — `base_project_bootstrapper.py` (1 492 lines), `a2c_concurrency.py` |
-| Date | 7 November 2026 |
-| Status | Baseline design, aligned to the reference implementation and its smoke tests |
+| Source baseline | `subhamviky/a2c-framework` `v1.2.0` — `base_project_bootstrapper.py` (1 731 lines), `a2c_concurrency.py`, `a2c_settings.py`, `a2c_contracts.py` |
+| Date | 13 November 2026 (v1.2.0; baseline 7 November 2026) |
+| Status | Aligned to A2C v1.2.0 and its smoke tests (includes the v1.1.2 fixes and wave C note C-02) |
 
 ## 1. Introduction
 
@@ -52,6 +52,8 @@ This document covers the problem and motivation (Section 2), use cases (Section 
 | Input resolution (`resolve_scaffold_request`) | Implemented | Inline, JSON and prompt; inline fields win. |
 | `BootstrapAndGenerateWorkflow` | Implemented | P0, then DevRequest validation, then A2C `SDLCWorkflow.execute()`. |
 | Concurrent bootstrap (claim of `p0:<scaffold_key>`) | Implemented | `a2c_concurrency.ClaimGuard`; any store with E2A's claim/complete/fail surface. |
+| Author, port, include paths, Lambda entry (v1.1.2) | Implemented | `authors` from the request (no hard-coded author); one `port` for Dockerfile and Terraform; `include_paths` copied into the image; `lambda_entry.py` (Mangum) for Python on AWS. |
+| Settings, contracts, Maven coordinates (v1.2) | Implemented | `settings.py` / `application.yml app:`; contract models and their test; `group:artifact[:version][@scope]` dependencies. |
 
 ### 1.4 Related documents
 
@@ -227,7 +229,13 @@ P0 is a library, not a service. It runs in-process on a workstation, a CI runner
 | `package_name` | str | Python package (required by Poetry). |
 | `group_id`, `artifact_id`, `packaging` | str | Java coordinates (required by Maven). |
 | `spring_boot_version`, `java_source_version`, `python_requires` | str | Toolchain versions. |
-| `dependencies`, `dev_dependencies` | List[str] | Declared dependencies; Spring Boot starters by short name. |
+| `dependencies`, `dev_dependencies` | List[str] | Declared dependencies. Java: a short name is a Spring Boot starter; `group:artifact[:version][@scope]` is a Maven coordinate (v1.2). Python: Poetry specs, including `name @ git+url@ref`. |
+| `authors` | List[str] | Written into `pyproject.toml`; empty by default (v1.1.2). |
+| `port` | int | The service port: Dockerfile `EXPOSE`, health check, server command, `docker-compose.yml` and A2C's Terraform (default 8000 Python, 8080 Java; v1.1.2). |
+| `include_paths` | List[str] | Extra folders copied into the Python image, e.g. `policies`, `knowledge` (v1.1.2). |
+| `settings` | List[dict] | Normalised app settings (from `a2c_sdlc.settings`, set by `aidlc-build`; v1.2). |
+| `contract_schemas` | List[{path, schema}] | Loaded JSON-Schema contracts (from `a2c_sdlc.contracts`, set by `aidlc-build`; v1.2). |
+| `repository_layout` | str | `single` (default) or `monorepo`; applied by `aidlc-build` after the build (v1.2). |
 | `output_path` | str | Parent directory of the project root (request › config › env › `./`). |
 | `license` | str | `Apache-2.0` (default), `MIT`, `PROPRIETARY` (no file). |
 | `git_init`, `include_docker`, `include_makefile` | bool | Optional artifacts (default true). |
@@ -261,6 +269,8 @@ P0 is a library, not a service. It runs in-process on a workstation, a CI runner
 | `context` | `config['a2c'].context` |
 | `tenant_id` | `request.tenant_id`, else `config.tenant_id` (A2C's workflow requires it) |
 | `project_root` | Step 5 root (A2C writes its artifacts there) |
+| `port`, `package_name` | `request.port` (default by runtime), `request.package_name` (v1.1.2: one port for Dockerfile and Terraform; the package for the Lambda handler) |
+| `settings` | `request.settings`, else `config['a2c'].settings` (v1.2: A2C's `IaCAgent` turns them into Terraform) |
 
 `DevRequest` (A2C) and `GeneratorRequest` (G2C) are distinct contracts; P0 produces only the former.
 
@@ -366,7 +376,9 @@ Module functions: `resolve_scaffold_request(request, config) → dict`, `_load_j
 | Extra checks | `runtime=python`, `build_tool=poetry`, platform approved | `runtime=java`, `build_tool=maven`, platform approved |
 | Tree | `src/<pkg>/{models,services,routers,tools,config}`, `tests/`, `.github/workflows/`; `+agents, rag, workflows` for `langgraph_agent` | `src/main/java/<group>/{config,domain,service,controller,repository}`, `src/main/resources`, `src/test/java/<group>`, `.github/workflows/` |
 | Manifest | `pyproject.toml` (Poetry) | `pom.xml` (Spring Boot parent) |
-| Env templates | `.env.example` (AWS/GCP/Azure + E2A NFR keys) | `application.yml`, `-dev`, `-prod` |
+| Env templates | `.env.example` (AWS/GCP/Azure + E2A NFR keys; v1.2: one line per declared setting, secrets as a comment) | `application.yml` (v1.2: an `app:` block with one `${NAME[:default]}` placeholder per setting), `-dev`, `-prod` |
+| Starter files (v1.1.2, v1.2) | `main.py` with `/health`; `lambda_entry.py` (Mangum) on AWS; `settings.py` and `tests/test_settings.py` when settings are declared; `contracts/<schema>.py` and `tests/test_contracts.py` when contracts are declared | `Application.java`, health test; `<group>/contracts/<Model>.java` records when contracts are declared |
+| Dependencies (v1.2) | Poetry specs; `aidlc-build` adds `e2a-framework` `v1.2.0` for E2A v1.2 agents | `maven_dependency()`: starter or coordinate |
 | Docker | Multi-stage Python, UID 1001, HEALTHCHECK `/health` | Multi-stage Temurin, non-root, HEALTHCHECK `/actuator/health` |
 | Makefile | Poetry commands | Maven commands |
 
@@ -375,13 +387,15 @@ Python layout (UC-1; the tree mirrors the E2A tiers):
 ```text
 SettlementEngine/
   pyproject.toml  .gitignore  .gitattributes  .env.example  README.md
-  LICENSE  Dockerfile  .dockerignore  Makefile
-  .github/workflows/            CI/CD directory (content from A2C)
+  LICENSE  Dockerfile  .dockerignore  Makefile  docker-compose.yml
+  .github/workflows/            CI/CD directory (content from A2C; root workflows in a monorepo)
+  .a2c/manifest.json            written by aidlc-build (v1.2), the basis of --upgrade
   src/settlement_engine/
-    __init__.py
+    __init__.py  main.py  lambda_entry.py (AWS)  settings.py (v1.2, with settings)
     config/  models/  services/  routers/  tools/     each with __init__.py
+    contracts/                  (v1.2, with contracts)
     agents/  rag/  workflows/   (langgraph_agent only)
-  tests/
+  tests/  test_health.py  test_settings.py  test_contracts.py
 ```
 
 **Table 6 — Reference-contract bootstrappers**
@@ -544,6 +558,9 @@ ProjectBootstrapperFactory.register('node', 'npm', NodeNpmBootstrapper)
 | `smoke_test_a2c.py` (P0 → A2C) | `BootstrapAndGenerateWorkflow` scaffolds, validates and runs `SDLCWorkflow`; A2C artifacts land in the P0 workspace. |
 | `smoke_test_g2c_contract.py` | P0 inline from G2C; Java without `project_type` → typed `scaffold_failed`. |
 | `smoke_test_aidlc_integration.py` | AI-DLC build over the real modules: P0's claim does not collide with the orchestrator's claim; build reaches `E2A_VERIFIED`. |
+| `smoke_test_template_mode.py` (31 checks, v1.1.2) | Authors from the request; one port; include paths in the image; Lambda entry and handler default; GCP max instances variable. |
+| `smoke_test_declarations.py` (32 checks, v1.2) | Settings module and its refusals; contract models (examples, closed objects, present-only-when, refusal by name, Java records); Maven coordinates. |
+| CI jobs `images` and `declarations` (v1.2) | The Python and Java images build and start (the Java one with a contract, a setting, Flyway and H2); generated settings and contract tests pass on three clouds. |
 | Probe: JSON request with no inline runtime/build_tool | Factory resolves it; 15 files scaffolded. |
 | Probe: prompt request | Resolved through the gateway double; success. |
 | Probe: `git_init=False` | No `.gitignore`/`.gitattributes`; caller's request unchanged. |
@@ -564,6 +581,8 @@ The defects recorded against the earlier baseline are fixed on this branch: the 
 | O-4 | Python requests without `project_type` default to `fastapi_microservice`. | Explicit but silent for callers that ignore logs. | Require it for Python too once callers are updated. |
 | O-5 | Without a store the guarantee is single-process. | Two processes can interleave writes. | Configure a claim store in multi-process deployments. |
 | O-6 | All tests use in-memory doubles. | Not validated against a live store, gateway or load. | Add an adapter test against a managed store. |
+| O-7 | Settings and contracts reach P0 through `aidlc-build` (`a2c_sdlc` → `context`). | A direct `bootstrap()` caller must set `settings` / `contract_schemas` itself. | Use `aidlc-build`, or pass the normalised fields. |
+| O-8 | Java records carry the contract's shape, not its constraints (patterns, lengths). | Validation stays with the producer of the event. | Add Bean Validation annotations if a Java consumer needs them. |
 
 ## Appendix A. Glossary
 
@@ -572,6 +591,7 @@ The defects recorded against the earlier baseline are fixed on this branch: the 
 | P0 / Phase Zero | The bootstrap step that precedes all code generation. |
 | `scaffold_key` | `project_name:runtime:build_tool:platform`; claimed as `p0:<scaffold_key>`. |
 | Handoff | `ScaffoldResult.dev_request` consumed by A2C. |
+| Declaration (v1.2) | A request field that replaces a hand patch: settings, contracts, Maven coordinates. |
 | Composable siblings | P0 and A2C: independent frameworks composed by `BootstrapAndGenerateWorkflow`. |
 | Correct by structure | An NFR produced by a code path rather than a prompt. |
 | Fast path | The directory check consulted only after the claim is won. |
@@ -580,14 +600,15 @@ The defects recorded against the earlier baseline are fixed on this branch: the 
 
 | Goal / invariant | Element | Anchor (`base_project_bootstrapper.py`) |
 |---|---|---|
-| G-1, INV-01 | `bootstrap()` | L256–465 |
-| G-3 | `resolve_scaffold_request`, `_resolve_config` | L166, L485 |
-| INV-02 | Step 2 | L301 |
-| G-4, INV-03 | Step 3 claim (`p0:` key) and fast path | L309–340 |
-| INV-04 | `__output_base`, `__project_dir`, `__is_already_scaffolded` | L700–716 |
-| INV-06 | `_validate_output` | L625 |
-| G-5, INV-07 | `__build_dev_request`; skip result | L740, L327–340 |
-| Typed outcomes | `__not_owner` | L682 |
-| G-6 | `ProjectBootstrapperFactory` | L1334 |
-| Composition | `BootstrapAndGenerateWorkflow` (validation L1472) | L1396–1492 |
+| G-1, INV-01 | `bootstrap()` | L263–495 |
+| G-3 | `resolve_scaffold_request`, `_resolve_config` | L173, L499 |
+| INV-02 | Step 2 | L308 |
+| G-4, INV-03 | Step 3 claim (`p0:` key) and fast path | L316–348 |
+| INV-04 | `__output_base`, `__project_dir`, `__is_already_scaffolded` | L732–760 |
+| INV-06 | `_validate_output` | L649 |
+| G-5, INV-07 | `__build_dev_request`; skip result | L772 |
+| Typed outcomes | `__not_owner` | L706 |
+| G-6 | `ProjectBootstrapperFactory` | L1573 |
+| Declarations (v1.2) | `maven_dependency`; settings and contracts in the starter files | L806; L1192–1201; `a2c_settings.py`, `a2c_contracts.py` |
+| Composition | `BootstrapAndGenerateWorkflow` | L1635–1731 |
 | Claim mechanics | `a2c_concurrency.ClaimGuard` | `a2c_concurrency.py` L150–220 |

@@ -2,16 +2,16 @@
 
 ### High-Level and Low-Level Design
 
-*This document describes G2C, the framework of E2A-governed generator agents that produce E2A abstract classes, A2C abstract classes and their inherited concrete classes, scaffolding the project through P0 inline. It covers the problem, use cases, HLD, data contracts, class and method contracts, the Phase Trigger decision model and the concurrency contract, so that a reader can form a complete mental model of G2C without opening the Python source.*
+*This document describes G2C, the framework of E2A-governed generator agents that produce E2A abstract classes, A2C abstract classes and their inherited concrete classes, scaffolding the project through P0 inline. Since v1.2 it generates Python agents for the E2A v1.2 contract and, from one request, the whole agent layer of a service: several agents, their workflow, governance, validation, tool stubs and tests. It covers the problem, use cases, HLD, data contracts, class and method contracts, the Phase Trigger decision model and the concurrency contract, so that a reader can form a complete mental model of G2C without opening the Python source.*
 
 | | |
 |---|---|
 | Framework | G2C — Generate-to-Class (top layer of the E2A / A2C / P0 framework stack) |
 | Document type | Design Document (HLD + LLD) |
 | Author | Subham Gupta, Principal Platform Architect |
-| Source baseline | `subhamviky/a2c-framework` branch `fix/g2c-p0-a2c-contracts` @ c0583ac — `base_generator_agent.py`, `inherited_generator.py`, the four generators, `generator_critic_agent.py`, `generator_templates.py`, `generator_factory.py`, `developer_platform_workflow.py`, `generator_api_router.py`, `typedicts.py`, `a2c_concurrency.py` |
-| Date | 7 November 2026 |
-| Status | Baseline design, aligned to the reference implementation and its smoke tests |
+| Source baseline | `subhamviky/a2c-framework` `v1.2.0` — `g2c_v12.py` (v1.2), `base_generator_agent.py`, `inherited_generator.py`, the four generators, `generator_critic_agent.py`, `generator_templates.py`, `generator_factory.py`, `developer_platform_workflow.py`, `generator_api_router.py`, `typedicts.py`, `a2c_concurrency.py` |
+| Date | 13 November 2026 (v1.2.0; baseline 7 November 2026) |
+| Status | Aligned to A2C v1.2.0 and its smoke tests (wave C, design note C-01) |
 
 ## 1. Introduction
 
@@ -20,6 +20,8 @@
 E2A defines how governed agentic services are built; A2C uses governed agents to generate software; P0 scaffolds projects. **G2C (Generate-to-Class)** sits on top of all three: a developer supplies one `GeneratorRequest` (inline or `generator-config.json`) and G2C produces the **class files** — the E2A abstract base (`e2a_base.py` / `E2ABase.java` / `e2aBase.ts` / `e2a_base.go`), the A2C abstract base (`a2c_base.py`), or a concrete inherited class inside a P0-scaffolded project.
 
 G2C is self-referential: every generator is itself an E2A-style agent. `BaseGeneratorAgent` follows the same three-layer contract as E2A's `BaseAgent` — one public entry point (`generate()`), protected hooks, private framework steps — and calls a model only through the E2A inference gateway (`config['llm_service']`, a `BaseLLMAgentService`). A `GeneratorCriticAgent` quality gate scores every output structurally before it is written. Without a gateway the generators run in **template mode**: they emit deterministic skeletons that pass the same critic, so the whole sequence works offline (CI, tests, air-gapped scaffolding).
+
+**Since v1.2** a Python `e2a_inherited` request targets the **E2A v1.2 contract** by default (`e2a_contract: "1.2"`): each generated hook declares only the parameters it uses (`_prepare(state, ctx, io_read)`, `_build_messages(state, ctx)`, `_act(state, ctx, io_modify)`, …), and the class imports the installed `e2a` package. A request may declare several agents, the workflow that runs them and the governance stages (`harness.agents`, `harness.workflow`, `harness.governance`); G2C then writes all of them, with validation, tool stubs and tests (Section 5.6). Java and A2C's own SDLC agents stay on the v1.1 contract.
 
 G2C always produces a class file. It never produces Terraform, CI/CD YAML or other infrastructure artifacts; those come from running A2C's `SDLCWorkflow` (with `IaCAgent` and `CICDAgent`) in an explicit second phase against a `DevRequest`.
 
@@ -44,7 +46,8 @@ Every G2C class in this document is **implemented** at the baseline and exercise
 | `BaseGeneratorAgent` | `base_generator_agent.py` | 12-step `generate()`; claim; template mode. |
 | `BaseInheritedClassGenerator` | `inherited_generator.py` | Abstract chain, P0 inline, base copy, class placement. |
 | Four generators | `e2a_/a2c_*_class_generator.py` | Real files with runtime-correct names. |
-| Skeletons | `generator_templates.py` | Python, Java, Node, Go. |
+| Skeletons | `generator_templates.py` | Python, Java, Node, Go (v1.1 contract). |
+| E2A v1.2 generation | `g2c_v12.py` | Agents, workflow, governance, validation, tools and tests from the declaration (v1.2). |
 | `GeneratorCriticAgent` | `generator_critic_agent.py` | Structural rules per critic type + concurrency rules. |
 | `GeneratorFactory` | `generator_factory.py` | `create(request, config)`, `register()`. |
 | `DeveloperPlatformWorkflow` | `developer_platform_workflow.py` | Flat `GeneratorResult`; shared-artifact registry; compensation. |
@@ -109,7 +112,7 @@ G2C turns the framework specifications into versioned system prompts, runs them 
 |---|---|---|---|
 | UC-1 | E2A base class only | `e2a_abstract` | `e2a_base.py` / `E2ABase.java` / `e2aBase.ts` / `e2a_base.go`; no scaffold. |
 | UC-2 | A2C base class only | `a2c_abstract` | `a2c_base.*`; the E2A base is generated first (or read from a path) and given as context. |
-| UC-3 | New E2A app, no base | `e2a_inherited` / `generate` (default) | E2A base + P0 scaffold + inherited class inside the scaffold; base copied to the project's `common/`. |
+| UC-3 | New E2A app, no base | `e2a_inherited` / `generate` (default for non-Python and `e2a_contract: "1.1"`) | E2A base + P0 scaffold + inherited class inside the scaffold; base copied to the project's `common/`. |
 | UC-4 | New E2A app, base in repo | `e2a_inherited` / `path` | P0 scaffold + inherited class. |
 | UC-5 | New E2A app, base as package | `e2a_inherited` / `package` | Inherited class importing from `package_name`; no base file. |
 | UC-6 | Team SDLC agent | `a2c_inherited` / `generate` | E2A and A2C bases + scaffold + `SDLCAssistantAgent` subclass with team NFRs. |
@@ -117,6 +120,8 @@ G2C turns the framework specifications into versioned system prompts, runs them 
 | UC-8 | Re-request the same key | any | Stored `GeneratorResult` replayed; no model call, no write. |
 | UC-9 | Offline scaffolding | any, no `llm_service` | Deterministic skeleton (template mode). |
 | UC-10 | Stub-to-real regeneration | any, `idempotency=False` | Output regenerated rather than hand-edited. |
+| UC-11 | Python agent on E2A v1.2 (default) | `e2a_inherited`, `e2a_contract: "1.2"` | An agent with v1.2 hooks importing `e2a`; no base file (the source is forced to `package`). |
+| UC-12 | Several agents in one workflow (v1.2) | `e2a_inherited` with `agents`, `workflow`, `governance` | Every agent, the workflow (`Steps`), governance (stages, `tool_policy`), validation, tool stubs and tests, inside the scaffold. |
 
 ### 3.3 Non-goals
 
@@ -151,6 +156,8 @@ G2C turns the framework specifications into versioned system prompts, runs them 
 | INV-07 | An abstract-class artifact is removed during compensation only if this run created it fresh and no other `generator_key` references it; artifacts from `path` or `package` are never removed. |
 | INV-08 | `GeneratorRequest` (G2C input) and `DevRequest` (A2C input) are never interchanged. |
 | INV-09 | A replay returns the result as settled (a deep copy is stored). |
+| INV-10 | A v1.2 Python agent passes E2A's Governed Entry Point rules (no R1 finding); generated projects pass `e2a.conformance --strict`. |
+| INV-11 | `e2a_contract: "1.2"` is accepted only for Python `e2a_inherited`; anything else is refused before generation. |
 
 ## 5. High-Level Design
 
@@ -204,7 +211,7 @@ G2C turns the framework specifications into versioned system prompts, runs them 
 |---|---|---|
 | `generate` (default) | No base exists | Abstract generator(s) run after the claim; output goes to `config['abstract_class_output_path']` or `<output_path>/common/`; its fingerprint excludes `output_path`, so the base is shared per tenant; the request switches to `path`. |
 | `path` | Base file exists | Content read from `abstract_class_path` as model context; copied into `<project_root>/common/`. |
-| `package` | Base published as a package | Inherited class imports from `package_name`; no file copied. |
+| `package` | Base published as a package | Inherited class imports from `package_name`; no file copied. With `e2a_contract: "1.2"` the source is always `package` with `package_name = 'e2a'` (E2A v1.2 is the installed package). |
 
 ### 5.5 API
 
@@ -221,22 +228,52 @@ G2C turns the framework specifications into versioned system prompts, runs them 
 
 The type-specific endpoints set `generator_type`. Config is bound once with `configure_generator(config)` and injected with `Depends(get_generator_config)`; one workflow instance is kept so its artifact registry outlives single requests. Endpoints are synchronous, so FastAPI runs each long generation in its threadpool. `ValueError` and `PermissionError` map to HTTP 400.
 
+### 5.6 E2A v1.2 generation and several agents (v1.2)
+
+![Figure 7 — One request, the whole agent layer](images/13_v12_generation.png)
+
+*Figure 7 — One request, the whole agent layer*
+
+The request's `harness` may declare:
+
+- **`agents`:** each with `name`, `kind` (`model` or `deterministic`), `reads`, `writes` and an optional `output_schema` (model agents only).
+- **`workflow`:** `{name, steps}`. A step is `{step, agent}` or `{step, route_by, agents: {value: agent}}`, optionally `material`.
+- **`governance`:** `{stages}` drawn from `capacity`, `token_budget`, `firewall`, `approval`, `sandbox` and `redaction`.
+
+The first agent is the primary one. It goes through `generate()` as before (claim, model or template, critic, write), with its declaration in the user prompt. Every other file is written from the declaration by `g2c_v12.files()`:
+
+**Table 3 — What a declaration generates (Python, E2A v1.2)**
+
+| Declaration | Generated |
+|---|---|
+| `kind: model` | `_build_messages(state, ctx)`, `_evaluate_output(response, state, ctx)`, `_fallback(state, ctx)` |
+| `kind: deterministic` | `_build_messages` returns `None` (no model step); no `_evaluate_output` |
+| `reads: [tool]` | `_prepare(state, ctx, io_read)` with one `io_read.call()` per tool; the tool stub is a read |
+| `writes: [tool]` | `_act(state, ctx, io_modify)` returning the typed outcomes; the tool stub has `material = True` |
+| `output_schema` | `<agent>_output.py`, a Pydantic model (A2C's contract generator) that `_evaluate_output` validates |
+| `workflow` | `workflow/<name>.py`: `_build_workflow(self, ctx)` returning `Steps(Step(...), Route(...))`; `_generate_idempotency_key` raises until you decide what makes two requests the same |
+| `governance.stages` | `services/governance.py`: the stages in order, `tool_policy` = each agent's reads and writes |
+| always | `services/validation.py` (a `_validate_<agent>` stub per agent), `tools/catalog.py`, `tests/test_agents_contract.py` (E2A `AgentContract`), `tests/test_conformance.py` (strict), and with a workflow `tests/test_workflow.py` (one request with the simulated model) |
+
+The `approved_agents` check of v1.1 skeletons is no longer generated: E2A v1.2's governance stages cover it. `aidlc-build` adds `e2a-framework` `v1.2.0` to the project's dependencies, because the generated code and tests import `e2a`.
+
 ## 6. Data Contracts
 
-![Figure 7 — GeneratorRequest, GeneratorResult and the embedded P0 contracts](images/04_typeddicts.png)
+![Figure 8 — GeneratorRequest, GeneratorResult and the embedded P0 contracts](images/04_typeddicts.png)
 
-*Figure 7 — GeneratorRequest, GeneratorResult and the embedded P0 contracts*
+*Figure 8 — GeneratorRequest, GeneratorResult and the embedded P0 contracts*
 
 ### 6.1 GeneratorRequest
 
-**Table 3 — GeneratorRequest fields**
+**Table 4 — GeneratorRequest fields**
 
 | Group | Fields and meaning |
 |---|---|
 | Universal | `generator_type` (`e2a_abstract`, `a2c_abstract`, `e2a_inherited`, `a2c_inherited`); `source` (`inline` default, `json`); `config_path`; `runtime`; `runtime_version`; `idempotency`; `async_mode`; `platform` (part of the key; default `standalone`); `domain`; `team`; `company`; `output_path`; `tenant_id` (claim scope; required with a gateway); `deadline_ms` (remaining budget). |
 | Prompt customisation | `system_prompt_additions` (added to, never replacing, the base spec); `user_prompt`; `mandatory_nfrs` (checked against `config['approved_nfrs']` when set); `optional_nfrs`. |
 | Abstract generators | `base_class_name` (also names the key); `abstract_methods`; `class_description`. |
-| Inherited generators | `agent_name`; `abstract_class_source`; `abstract_class_path`; `abstract_class_config`; `package_name`; `scaffold` (P0 `ScaffoldRequest`; missing identity fields default from the request). |
+| Inherited generators | `agent_name` (defaults to the first of `agents`); `abstract_class_source`; `abstract_class_path`; `abstract_class_config`; `package_name`; `scaffold` (P0 `ScaffoldRequest`; missing identity fields default from the request). |
+| E2A v1.2 (v1.2) | `e2a_contract` (`"1.2"` default for Python `e2a_inherited`, else `"1.1"`); `agents`; `workflow`; `governance`; `project_package` (set by `aidlc-build` when no scaffold result carries the package). |
 | Model | `model_id`; `critic_model_id`. |
 | Advanced | `fingerprint_exclude` (fields left out of the claim fingerprint). |
 | Written by `generate()` | `generator_key`; `generated_files`; `critic_report`; `errors` (on the internal copy). |
@@ -307,9 +344,9 @@ Resolution order is config › environment › default.
 
 ### 8.1 BaseGeneratorAgent
 
-![Figure 8 — BaseGeneratorAgent member view](images/03_member_view.png)
+![Figure 9 — BaseGeneratorAgent member view](images/03_member_view.png)
 
-*Figure 8 — BaseGeneratorAgent member view*
+*Figure 9 — BaseGeneratorAgent member view*
 
 | Aspect | Detail |
 |---|---|
@@ -317,7 +354,7 @@ Resolution order is config › environment › default.
 | Module data | `RUNTIME_PATTERNS[runtime]` — `abstract_base`, `abstract_method`, `private_prefix`, `protected_prefix`, `type_hints`, `extension`. |
 | Invariants | INV-01 to INV-06, INV-09. |
 
-**Table 4 — BaseGeneratorAgent methods**
+**Table 5 — BaseGeneratorAgent methods**
 
 | Method | Kind | Signature → returns | Contract |
 |---|---|---|---|
@@ -364,21 +401,23 @@ Resolution order is config › environment › default.
 
 ### 8.4 BaseInheritedClassGenerator and the two inherited generators
 
-![Figure 9 — Inherited generators: internal phases](images/07_flow_inherited.png)
+![Figure 10 — Inherited generators: internal phases](images/07_flow_inherited.png)
 
-*Figure 9 — Inherited generators: internal phases*
+*Figure 10 — Inherited generators: internal phases*
 
-**Table 5 — BaseInheritedClassGenerator methods**
+**Table 6 — BaseInheritedClassGenerator methods**
 
 | Method | Contract |
 |---|---|
-| `_validate_request` | `runtime, agent_name, output_path`; `path` needs `abstract_class_path`, `package` needs `package_name`. |
+| `_v12` | `(request) → bool`: sets the default `e2a_contract` (`"1.2"` only for Python `e2a_inherited`) and says whether this request targets E2A v1.2. |
+| `_validate_request` | `runtime, agent_name, output_path` (`agent_name` defaults to the first declared agent); `path` needs `abstract_class_path`, `package` needs `package_name`. v1.2: refuses `1.2` outside Python `e2a_inherited` and forces `abstract_class_source='package'`, `package_name='e2a'`. |
 | `_prepare` | Phases 5–8 after the claim: `_generate_abstracts()` for `generate`; `_scaffold()` when `scaffold` is set (failure aborts as `scaffold_failed`, retryable unless P0 returned `conflict`/`failed_final`); copy the base(s) into `<project_root>/common/`. Both steps are idempotent, so a later model failure still settles retryable. |
 | `_generate_abstracts` | E2A abstract (plus A2C abstract for `a2c_inherited`) with `fingerprint_exclude=['output_path']`; sets `abstract_class_path`, `e2a_abstract_class_path`, `abstract_class_generated_fresh` (false when replayed). |
 | `_scaffold` | P0 inline. Defaults from the request: `runtime`, `platform`, `build_tool` (poetry/maven/npm/go_modules), `project_name` (`<agent_name>Service`), Python `package_name`, `output_path`, `tenant_id`. Java identity (`group_id`, `artifact_id`, `project_type`) must be supplied. |
 | `_abstract_context` | E2A and A2C base content, or a package note. |
-| `_write_output` | Python `src/<pkg>/agents/<snake>.py`; Java `src/main/java/<group>/service/<Agent>.java`; Node `src/agents/<Agent>.ts`; Go `internal/agents/<snake>.go`; without a scaffold, under `output_path`. |
-| `_template_output` | Inherited skeleton: E2A → extends `BaseAgent` with `_build_messages`, `_apply_policy`, `_evaluate_output`, `_fallback`, `_handle_error`; A2C → extends `SDLCAssistantAgent`, calls `super()._apply_policy()` then adds the request's `mandatory_nfrs`. |
+| `_build_user_prompt` | v1.1: class, base, import line, domain, requirement, NFRs. v1.2: the E2A v1.2 hook contract plus `Agent declaration: {json}` of the primary agent. |
+| `_write_output` | Python `src/<pkg>/agents/<snake>.py`; Java `src/main/java/<group>/service/<Agent>.java`; Node `src/agents/<Agent>.ts`; Go `internal/agents/<snake>.go`; without a scaffold, under `output_path`. v1.2 with a project: the primary agent from the response, then every other file of `g2c_v12.files()`; returns all paths. |
+| `_template_output` | v1.1 skeleton: E2A → extends `BaseAgent` with `_build_messages`, `_apply_policy`, `_evaluate_output`, `_fallback`, `_handle_error`; A2C → extends `SDLCAssistantAgent`, calls `super()._apply_policy()` then adds the request's `mandatory_nfrs`. v1.2: `g2c_v12.agent_source()` of the primary agent's declaration. |
 
 `E2AInheritedClassGenerator` and `A2CInheritedClassGenerator` set only `generator_name`, `generator_type`, `critic_type` and `kind`.
 
@@ -386,11 +425,11 @@ Resolution order is config › environment › default.
 
 | Method | Signature → returns | Contract |
 |---|---|---|
-| `review` | `(response, request) → {score, critic_type, missing, passed, findings}` | Rules of Table 6 for `config['critic_type']` or `request['generator_type']`; Python is parsed with `ast` (a syntax error scores 0). |
+| `review` | `(response, request) → {score, critic_type, missing, passed, findings}` | Rules of Table 7 for `config['critic_type']` or `request['generator_type']`; Python is parsed with `ast` (a syntax error scores 0). |
 | `score` | `(response, request) → float` | `review()['score']`. |
 | `concurrency_findings` | `(source) → List[str]` | Shared-gateway rule violations. |
 
-**Table 6 — Critic rules**
+**Table 7 — Critic rules**
 
 | critic_type | Checks | Deduction |
 |---|---|---|
@@ -398,17 +437,30 @@ Resolution order is config › environment › default.
 | `e2a_abstract` | Nine E2A classes present; Python uses `@abstractmethod` | 0.10 per class; 0.15 |
 | `a2c_abstract` | `SDLCAssistantAgent`, `DevRequest`, `SDLCWorkflow`, `CodeCriticAgent`, `_apply_policy`, mandatory-NFR injection | 0.15 each |
 | `e2a_inherited`, `a2c_inherited` | Class `<agent_name>` exists (else 0.5); has a base (`SDLCAssistantAgent` for A2C); `_build_messages` and `_evaluate_output` overridden; no `run`/`execute`/`retrieve` override; no name-mangled private access | 0.15 each |
+| `e2a_inherited` with `e2a_contract: "1.2"` | As above, but `_evaluate_output` is required only for an agent with a model step; each `e2a.conformance` R1 finding in the source | 0.15 each |
 
 The critic is deterministic and makes no model call; `GeneratorCriticAgent` checks generated class structure, A2C's `CodeCriticAgent` checks NFR patterns in generated business code.
 
-### 8.6 GeneratorFactory
+### 8.6 g2c_v12 (v1.2)
+
+| Function | Signature → returns | Contract |
+|---|---|---|
+| `normalize` | `(harness) → {agents, workflow, stages}` | One agent from `agent_name` when no `agents`; PascalCase, unique names; `kind` in (`model`, `deterministic`); `output_schema` only for model agents; workflow steps unique and naming declared agents; known stages. Else `HarnessError` (a `ValueError`). |
+| `agent_source` | `(agent, package) → str` | The agent module (Table 3). |
+| `output_model` | `(agent) → str or None` | Pydantic model of `output_schema`, through A2C's contract generator. |
+| `workflow_source`, `governance_source`, `validation_source`, `tools_source` | `(spec, …) → str` | The modules of Table 3. |
+| `tests` | `(spec, package) → {path: source}` | Contract, conformance and workflow tests. |
+| `example` | `(schema) → value` | A minimal valid instance, used as the simulated model's answer in the workflow test. |
+| `files` | `(harness, package) → {path: source}` | Everything above, relative to the project root. |
+
+### 8.7 GeneratorFactory
 
 | Method | Signature → returns | Contract |
 |---|---|---|
 | `create` | `(request or type, config=None) → BaseGeneratorAgent` | Look up `generator_type`; unknown → `ValueError` listing registered types; instantiate with `config`. |
 | `register` | `(gen_type, cls)` | Register at import time; the type must also be approved by the generator's policy. |
 
-### 8.7 DeveloperPlatformWorkflow
+### 8.8 DeveloperPlatformWorkflow
 
 | Method | Signature → returns | Contract |
 |---|---|---|
@@ -420,9 +472,9 @@ The critic is deterministic and makes no model call; `GeneratorCriticAgent` chec
 
 ### 9.1 generate() sequence
 
-![Figure 10 — generate(): fixed 12-step sequence](images/05_flow_generate.png)
+![Figure 11 — generate(): fixed 12-step sequence](images/05_flow_generate.png)
 
-*Figure 10 — generate(): fixed 12-step sequence*
+*Figure 11 — generate(): fixed 12-step sequence*
 
 | Step | Action | Condition |
 |---|---|---|
@@ -442,9 +494,9 @@ The critic is deterministic and makes no model call; `GeneratorCriticAgent` chec
 
 ### 9.2 Critic routing
 
-![Figure 11 — Critic score routing](images/08_flow_critic.png)
+![Figure 12 — Critic score routing](images/08_flow_critic.png)
 
-*Figure 11 — Critic score routing*
+*Figure 12 — Critic score routing*
 
 ### 9.3 The second phase
 
@@ -452,20 +504,20 @@ G2C ends at a class file. When `config['a2c'].enabled`, the P0 result inside `sc
 
 ### 9.4 Phase Trigger decision model
 
-![Figure 12 — Phase Trigger matrix](images/10_phase_matrix.png)
+![Figure 13 — Phase Trigger matrix](images/10_phase_matrix.png)
 
-*Figure 12 — Phase Trigger matrix*
+*Figure 13 — Phase Trigger matrix*
 
 Two axes are evaluated from repository state before any generation: **Axis A** — do the E2A and A2C abstract classes exist (an `e2a_base.py` without `BaseLLMAgentService` is stale and must be regenerated); **Axis B** — does a P0 scaffold with a build manifest exist.
 
 | Case | Situation | Canonical way to express it |
 |---|---|---|
 | 1A | Day-two module in a bootstrapped domain | Inherited generators with `abstract_class_source='path'` or `'package'`; omit `scaffold` (or rely on P0's replay); reuse IaC/CI. |
-| 1B | Skeleton made outside G2C, no abstractions | `abstract_class_source='generate'`; omit `scaffold`; the critic gates the bases before the inherited class. |
+| 1B | Skeleton made outside G2C, no abstractions | `abstract_class_source='generate'` (v1.1 contract); omit `scaffold`; the critic gates the bases before the inherited class. With E2A v1.2 (Python) there is no base to generate: the source is the `e2a` package. |
 | 2A | Proven abstractions, new service | `path`/`package` with `scaffold`; then the A2C second phase for fresh IaC/CI. |
 | 2B | Greenfield | `generate` with `scaffold`; then the A2C second phase. |
 
-**Table 7 — Phase Trigger errors**
+**Table 8 — Phase Trigger errors**
 
 | ID | Severity | Error | Remedy |
 |---|---|---|---|
@@ -476,7 +528,7 @@ Two axes are evaluated from repository state before any generation: **Axis A** �
 | E-05 | Medium | `DevRequest` / `GeneratorRequest` confused | `GeneratorRequest` for generators; `DevRequest` for A2C. |
 | E-06 | Low | Legacy branch not frozen | Tag `legacy-non-g2c` before the first run; it is the counterfactual baseline. |
 
-**Table 8 — Reconciling Phase Trigger terminology with canonical contracts**
+**Table 9 — Reconciling Phase Trigger terminology with canonical contracts**
 
 | Phase Trigger Reference wording | Canonical contract |
 |---|---|
@@ -490,9 +542,9 @@ Two axes are evaluated from repository state before any generation: **Axis A** �
 
 ## 10. Concurrency and Failure
 
-![Figure 13 — Claim on g2c:generator_key and shared-artifact ownership](images/11_seq_concurrency.png)
+![Figure 14 — Claim on g2c:generator_key and shared-artifact ownership](images/11_seq_concurrency.png)
 
-*Figure 13 — Claim on g2c:generator_key and shared-artifact ownership*
+*Figure 14 — Claim on g2c:generator_key and shared-artifact ownership*
 
 | Outcome of claim | Meaning | `generate()` |
 |---|---|---|
@@ -546,19 +598,21 @@ GeneratorFactory.register('e2a_tool', E2AToolServiceGenerator)
 
 ## 13. Verification
 
-**Table 9 — Evidence at the baseline**
+**Table 10 — Evidence (v1.2.0)**
 
 | Suite | What it shows |
 |---|---|
 | `smoke_test_generator_concurrency.py` (55 checks) | Generation through the gateway double; key format; claim `SUCCEEDED`; replay without a model call; conflict; tenant scoping; 8 concurrent duplicates → one generation; rejection → retryable then success; deadline before any call; critic regeneration and final failure; `UNKNOWN` after a write failure; stale owner cannot settle; tenant required with a gateway; CAS artifact ownership including 200 racing releases; workflow chain, replay and compensation; critic concurrency rules; the P0 concurrency checks. |
-| `smoke_test_g2c_contract.py` (33 checks) | Template mode writes critic-passing files for all four runtimes; a structurally bad model reply is regenerated twice then fails final with nothing written; inherited generation with P0 inline (manifest, class inside the scaffold, base in `common/`, `dev_request` handoff, fresh flag); second project shares the base (two references, one creator) and compensation keeps it; `a2c_inherited` chain; package source; Java placement; P0 failure typed; factory config/register/unknown; runtime and NFR policy; JSON source; deadline interop; router endpoints and HTTP 400. |
-| `smoke_test_aidlc_integration.py` (6 checks) | E2A's AI-DLC orchestrator calls `DeveloperPlatformWorkflow(config=...)` on the real module and reaches `E2A_VERIFIED`. |
+| `smoke_test_g2c_contract.py` (35 checks; its requests pin `e2a_contract: "1.1"`, the abstract-class path) | Template mode writes critic-passing files for all four runtimes; a structurally bad model reply is regenerated twice then fails final with nothing written; inherited generation with P0 inline (manifest, class inside the scaffold, base in `common/`, `dev_request` handoff, fresh flag); second project shares the base (two references, one creator) and compensation keeps it; `a2c_inherited` chain; package source; Java placement; P0 failure typed; factory config/register/unknown; runtime and NFR policy; JSON source; deadline interop; router endpoints and HTTP 400. |
+| `smoke_test_aidlc_integration.py` (15 checks) | E2A's AI-DLC orchestrator calls `DeveloperPlatformWorkflow(config=...)` on the real module and reaches `E2A_VERIFIED`. |
+| `smoke_test_g2c_v12.py` (17 checks) | Refusals (kind, unknown agent, stage, schema on a deterministic agent); a three-agent request builds with the critic at 1.0; v1.2 hooks; deterministic agent without a model step, writes through `io_modify`; output schema validated; material tools; no application service; generated tests; strict conformance; one request through the generated workflow routes to the right agent; the E2A dependency; Java with `1.2` refused; a single-agent request defaults to v1.2. |
+| CI job `declarations` (gcp) | The three-agent example passes its own generated tests. |
 
 ## 14. Implementation Reality, Gaps and Design Observations
 
 The stubs recorded against the earlier baseline are replaced on this branch: public hook names and a five-step `generate()`; no model call; critic and generator scores fixed at 1.0; nothing written; `DeveloperPlatformWorkflow()` without config and with a wrapped result; no abstract chain and no P0; a factory without config or `register`; a health-only router; incomplete typedicts; and the missing `a2c_concurrency` module.
 
-**Table 10 — Remaining observations**
+**Table 11 — Remaining observations**
 
 | ID | Observation | Effect | Recommendation |
 |---|---|---|---|
@@ -567,8 +621,11 @@ The stubs recorded against the earlier baseline are replaced on this branch: pub
 | O-3 | `source='prompt'` is rejected by the generators. | Free text goes in `user_prompt`; no structured extraction of the request from prose. | Add prompt resolution through the gateway if needed. |
 | O-4 | Template-mode skeletons are minimal. | Useful for structure and offline runs, not as finished code. | Treat template output as a starting point; regenerate with a gateway. |
 | O-5 | The `local` fast path (no store) reuses any existing file at the abstract output location. | Two different `base_class_name`s targeting one directory share a file. | Use distinct `abstract_class_output_path`s, or a store. |
-| O-6 | The Phase Trigger Reference uses legacy names and flags. | Readers may look for methods that do not exist. | Use Table 8; revise the reference. |
+| O-6 | The Phase Trigger Reference uses legacy names and flags. | Readers may look for methods that do not exist. | Use Table 9; the reference carries a v1.2 note. |
 | O-7 | All tests use in-memory doubles. | Not validated against a live store, gateway or load. | Add adapter tests. |
+| O-8 | Only the primary agent passes through the model and the critic; the other generated files come from deterministic templates. | They are correct skeletons with TODOs, not domain code. | Fill the TODOs; or declare each agent in its own request to have each one generated by the model. |
+| O-9 | Java, Node and Go stay on the v1.1 contract. | No E2A v1.2 runtime outside Python. | `e2a-java` is wave D (G-4). |
+| O-10 | Generated tool stubs raise `NotImplementedError` and the workflow's `_generate_idempotency_key` raises until written. | The generated workflow test passes a client idempotency key; a material call returns `UNKNOWN` until the tool is implemented. | Implement the tools and the key first. |
 
 ## Appendix A. Glossary
 
@@ -578,6 +635,8 @@ The stubs recorded against the earlier baseline are replaced on this branch: pub
 | `generator_key` | `name:type:runtime:platform`; claimed as `g2c:<generator_key>`. |
 | Abstract class source | `generate`, `path` or `package`. |
 | Template mode | Generation without a gateway, from deterministic skeletons. |
+| `e2a_contract` | `"1.2"` (default for Python `e2a_inherited`) or `"1.1"`: the E2A hook contract generated agents follow. |
+| Declaration (v1.2) | `harness.agents`, `workflow`, `governance`: what G2C generates the agent layer from. |
 | Second phase | Explicit A2C `SDLCWorkflow` run with a `DevRequest`. |
 | Case 1A/1B/2A/2B | Phase Trigger cases from Axis A × Axis B. |
 
@@ -589,9 +648,10 @@ The stubs recorded against the earlier baseline are replaced on this branch: pub
 | G-6, INV-06 | Claim `g2c:` and local fast path | `base_generator_agent.py` L113–132 |
 | G-4, INV-03 | `_infer()` | `base_generator_agent.py` L331 |
 | G-3, INV-02 | Critic loop; `_critic_review` | `base_generator_agent.py` L384, L317; `generator_critic_agent.py` L65 |
-| INV-05 | Inherited rules | `generator_critic_agent.py` L116 |
-| G-5 | Abstract chain, P0 inline | `inherited_generator.py` L45, L73, L106 |
+| INV-05 | Inherited rules | `generator_critic_agent.py` L161 |
+| G-5 | Abstract chain, P0 inline | `inherited_generator.py` L62, L96, L155 |
 | G-8 | Skeletons | `generator_templates.py` |
+| INV-10, INV-11, UC-11/12 (v1.2) | `_v12`, `_validate_request`, `_write_output`, `_template_output`; `g2c_v12.files`; critic v1.2 rule | `inherited_generator.py` L36, L43, L212, L239; `g2c_v12.py` L64, L348; `generator_critic_agent.py` L191 |
 | G-7, INV-07 | Registry and compensation | `developer_platform_workflow.py` L35, L50; `a2c_concurrency.py` L321, L344 |
 | Factory | `create`, `register` | `generator_factory.py` L20, L31 |
 | API | Router | `generator_api_router.py` L49–81 |

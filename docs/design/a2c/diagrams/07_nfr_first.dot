@@ -7,7 +7,7 @@ digraph G {
   p3 [label="3  CodeGenAgent (observability) — JSON logs, tracing, metrics, SLO checker"];
   p4 [label="4  CICDAgent — OIDC, eval gate, image scan, deploy, auto-rollback"];
   p5 [label="5  CodeGenAgent (NFRs) — circuit breakers, retry, FinOps routing, policy-as-code"];
-  p6 [label="6  CodeGenAgent (business logic) — agents, RAG, tools, routers, workflow"];
-  p7 [label="7  CodeCriticAgent — NFR patterns, layers, score ≥ 0.75", fillcolor="#E6F4F5", color="#0F7C8C"];
-  p1->p2->p3->p4->p5->p6->p7;
+  p6 [label="6  CodeCriticAgent — NFR patterns, layers, score ≥ 0.75", fillcolor="#E6F4F5", color="#0F7C8C"];
+  g [label="Business logic is not generated here (v1.2): the service's agents, workflow and tools\ncome from G2C (harness.agents / workflow), its routers from P0", shape=note, fillcolor="#FFFFFF", width=6.2];
+  p1->p2->p3->p4->p5->p6; p6->g [style=dotted, arrowhead=none];
 }

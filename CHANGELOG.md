@@ -22,7 +22,15 @@ Requires E2A `v1.2.0`.
 - **The application-service module (A-4):** `generated/service.py` / `<Project>Service.java` are no longer generated (no project used them); the NFR and observability modules stay and the critic reviews them. A2C runs 6 agent steps instead of 7.
 
 ### Also
-- `smoke_test_declarations.py` (32 checks), `smoke_test_g2c_v12.py` (16 checks); CI job `declarations` (Terraform fmt and test on three clouds, generated tests, actionlint on a generated monorepo); the Java image of the `images` job now has a contract, a setting, Flyway and H2.
+- `smoke_test_declarations.py` (32 checks), `smoke_test_g2c_v12.py` (17 checks); CI job `declarations` (Terraform fmt and test on three clouds, generated tests, actionlint on a generated monorepo); the Java image of the `images` job now has a contract, a setting, Flyway and H2.
+
+### Fixed
+- `CodeCriticAgent`'s input validator still required `generated_code` (the removed application-service module); it now requires `generated_nfr_module`. `smoke_test_a2c.py` checks it (26 checks).
+
+### Docs
+- **Design documents** (A2C, G2C, P0): updated for v1.2: declarations and upgrades (A2C 5.6, 5.7, 8.8), E2A v1.2 generation and several agents (G2C 5.6, 8.6), the new ScaffoldRequest and handoff fields (P0), the six-step chain, verification, observations and traceability. New diagrams `10_declarations`, `11_upgrade` (A2C) and `13_v12_generation` (G2C); updated `04_workflow`, `07_nfr_first` and `04_typeddicts`; `docs/design/common/style.puml` restored.
+- **Word documents:** the three `*_Framework_Design_Document.docx` are regenerated from the Markdown in the same house style (cover, contents with page numbers, headers and footers, tables, figures).
+- **References:** A2C (what v1.2 changes; section 9, declarations and upgrades), P0 (what v1.1.2 and v1.2 add), G2C (section 18, E2A v1.2 generation; the v1.2 critic rule), Phase Trigger Decision (names and v1.2 note).
 
 ## v1.1.2 — Fixes from the Order-to-Cash projects
 

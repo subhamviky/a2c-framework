@@ -15,6 +15,11 @@ class ScaffoldRequest <<TypedDict>> {
   spring_boot_version / java_source_version
   python_requires / output_path / license
   git_init / include_docker / include_makefile
+  ..v1.1.2..
+  authors / port / include_paths
+  ..v1.2 (from aidlc-build)..
+  settings / contract_schemas
+  repository_layout
   ..written by bootstrap()..
   scaffold_key / scaffold_plan
   scaffolded_files / errors
@@ -48,6 +53,8 @@ class DevRequest <<A2C TypedDict>> {
   context ← a2c.context
   tenant_id ← request / config
   project_root ← Step 5 root
+  port / package_name ← request  «v1.1.2»
+  settings ← request / a2c.settings  «v1.2»
 }
 ScaffoldRequest ..> ScaffoldResult : bootstrap()
 ScaffoldResult *-- DevRequest : dev_request

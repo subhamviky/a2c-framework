@@ -60,7 +60,7 @@ for _spec in (
     ConfigKey('a2c_max_tokens', 'A2C_MAX_TOKENS', 32000, int, 'A2C',
               'SDLCAgentChain — per-agent token budget'),
     ConfigKey('a2c_max_regenerations', 'A2C_MAX_REGENERATIONS', 2, int, 'A2C',
-              'SDLCAgentChain — business-code regenerations after a failed review'),
+              'SDLCAgentChain — NFR-module regenerations after a failed review'),
     ConfigKey('a2c_sequence', 'A2C_SEQUENCE', 'nfr_first', str, 'A2C',
               "SDLCAgentChain — 'nfr_first' (default) or 'topology'"),
     ConfigKey('a2c_write_artifacts', 'A2C_WRITE_ARTIFACTS', True, _to_bool, 'A2C',
@@ -108,7 +108,7 @@ class DevRequest(TypedDict, total=False):
     spec: str                  # RequirementsAgent
     generated_observability: str
     generated_nfr_module: str
-    generated_code: str        # CodeGenAgent (business logic)
+    generated_code: str        # CodeGenAgent business mode (not run by either order since v1.2)
     generated_iac: str         # IaCAgent
     generated_cicd: str        # CICDAgent
     critic_report: Dict[str, Any]
@@ -241,7 +241,8 @@ class RequirementsAgent(SDLCAssistantAgent):
 
 
 class CodeGenAgent(SDLCAssistantAgent):
-    """Three NFR-first modes: observability module, NFR module, business logic."""
+    """Code modes: observability module and NFR module (both in the default orders); business
+    logic stays selectable but no order runs it since v1.2 (A-4)."""
     agent_name = 'CodeGenAgent'
     MODES = {'observability': ('generated_observability', ['Observability'],
                                'Generate ONLY the observability module: structured JSON logging, '
@@ -425,7 +426,7 @@ class SDLCAgentChain:
     """The workflow's node sequence, run as one unit by BaseWorkflow.execute()
     (it exposes run() with the agent signature). Order is NFR-first by default
     (config['a2c_sequence']='nfr_first'); 'topology' runs the five agents once
-    each. Regenerates business code with the critic's findings while the score
+    each. Regenerates the NFR module with the critic's findings while the score
     is below threshold (≤ a2c_max_regenerations). Writes artifacts only after
     the critic passes. Stops at the next step boundary when the deadline
     expires or an agent records an error."""
@@ -592,7 +593,7 @@ class DevPlatformValidationService(BaseValidationService):
         return (not errors, errors)
 
     def _validate_code_critic_agent(self, state, config=None, **kwargs):
-        errors = [f'missing field: {k}' for k in ('generated_code', 'mandatory_nfrs') if k not in state]
+        errors = [f'missing field: {k}' for k in ('generated_nfr_module', 'mandatory_nfrs') if k not in state]
         return (not errors, errors)
 
     def _enforce_entitlement_gate(self, agent_name, state, config=None, **kwargs):

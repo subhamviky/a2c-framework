@@ -1,0 +1,20 @@
+digraph G {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>e2a_inherited, Python, e2a_contract 1.2 — one request, the whole agent layer</b>>, fontcolor="#1F3864", nodesep=0.25, ranksep=0.45, pad=0.2];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=10, fontcolor="#1F3864", margin="0.12,0.05"];
+  edge [color="#2E4A6B", fontname="DejaVu Sans", fontsize=9];
+  req [label="harness\nagents [{name, kind, reads, writes, output_schema}]\nworkflow {name, steps: Step | Route}\ngovernance {stages}", shape=note, fillcolor="#FFFFFF"];
+  norm [label="g2c_v12.normalize()\nrefuses unknown kinds, agents, stages"];
+  gen [label="generate() — claim, critic, write\nprimary agent: model or template answer\nto the 'Agent declaration' prompt"];
+  crit [label="GeneratorCriticAgent\n_build_messages (+ _evaluate_output for a model step)\ne2a.conformance R1", fillcolor="#E6F4F5", color="#0F7C8C"];
+  subgraph cluster_out { label="src/<package>/  and  tests/"; fontcolor="#0F7C8C"; color="#0F7C8C"; style="rounded";
+    a [label="agents/<agent>.py\n(+ <agent>_output.py)"];
+    w [label="workflow/<workflow>.py\nSteps · Step · Route"];
+    gv [label="services/governance.py\nstages · tool_policy"];
+    v [label="services/validation.py\n_validate_<agent>"];
+    t [label="tools/catalog.py\nmaterial for writes"];
+    ts [label="tests/: AgentContract per agent,\nconformance (strict), one request\nthrough the workflow"];
+  }
+  dep [label="pyproject: e2a-framework v1.2.0\n(P0, from aidlc-build)", shape=note, fillcolor="#FFFFFF"];
+  req->norm->gen->crit; crit->a [label="≥ 0.75"]; gen->w [style=dashed, label=" from the declaration"]; gen->{gv v t ts} [style=dashed];
+  ts->dep [style=dotted, arrowhead=none];
+}

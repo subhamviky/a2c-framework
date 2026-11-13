@@ -28,6 +28,15 @@ A2C extends E2A in one precise direction: E2A defines how to build governed agen
 | Output | Agent responses, tool results, RAG answers | Python/Java microservice code, Terraform IaC, GitHub Actions workflows, NFR implementations |
 | NFR enforcement | Inherited by all agent subclasses from `BaseAgent` | Injected into all generated code artifacts via `_apply_policy()` |
 
+### 1.1 What v1.2 changes
+
+| Change | Effect | Where |
+|:---|:---|:---|
+| **No business-service module** (A-4) | `CodeGenAgent` writes the observability and NFR modules; the business mode is no longer run. The service's agents, workflow and tools come from G2C (`harness.agents`), its routers from P0. A2C runs 6 agent steps (topology order: 5). | Sections 3.7, 5 |
+| **Declarations instead of patches** (C-02) | `a2c_sdlc.settings` (Terraform variables, runtime environment, secret references, a Terraform test per setting), `a2c_sdlc.contracts` (models), Maven coordinates, `repository_layout: monorepo`. | Section 9 |
+| **Upgrades** (A-6) | `.a2c/manifest.json` and `aidlc-build --upgrade`. | Section 9 |
+| **E2A v1.2** | A2C pins `e2a-framework` `v1.2.0`. A2C's own agents keep the v1.1 hook signatures, which E2A v1.2 runs with a `DeprecationWarning` (to migrate before E2A v1.3). | Section 3.7 |
+
 ## 2. The Problem A2C Solves
 
 ### 2.1 Code Generation Without Architecture
@@ -155,7 +164,7 @@ class CodeCriticAgent(BaseAgent):
 
     def _build_messages(self, state, config=None, **kwargs) -> list:
         code = '\n\n'.join(state.get(k, '') for k in
-                           ('generated_observability', 'generated_nfr_module', 'generated_code'))
+                           ('generated_observability', 'generated_nfr_module'))
         return [{'role': 'system', 'content':
                  'You are a senior architect. Score 0.0-1.0: does this code contain all '
                  'required NFR patterns as code (not comments) and the Clean Architecture '
@@ -170,7 +179,7 @@ class CodeCriticAgent(BaseAgent):
         except (json.JSONDecodeError, ValueError, TypeError):
             review, model_score = {'parse_error': True}, 0.0
         code = '\n'.join(state.get(k, '') for k in
-                         ('generated_observability', 'generated_nfr_module', 'generated_code'))
+                         ('generated_observability', 'generated_nfr_module'))
         pattern = nfr_pattern_report(code, state.get('mandatory_nfrs', MANDATORY_NFRS))
         score = round(min(model_score, pattern['score']), 4)
         state['critic_report'] = {'score': score, 'model_score': model_score,
@@ -224,7 +233,7 @@ class DevPlatformValidationService(BaseValidationService):
 
     def _validate_code_critic_agent(self, state, config=None, **kwargs):
         errors = [f'missing field: {k}'
-                  for k in ('generated_code', 'mandatory_nfrs') if k not in state]
+                  for k in ('generated_nfr_module', 'mandatory_nfrs') if k not in state]
         return (not errors, errors)
 
     def _enforce_entitlement_gate(self, agent_name, state, config=None, **kwargs):
@@ -237,13 +246,13 @@ Policy checks that depend on configuration at run time (for example the `approve
 
 ### 3.7 Reference Implementation (`a2c_base.py`)
 
-`a2c_base.py` in the `a2c-framework` repository implements this document on top of `e2a_base.py`, which is deliberately not copied there (the single source of truth is `e2a-framework/reference/e2a_base.py`). The classes:
+`a2c_base.py` in the `a2c-framework` repository implements this document on top of E2A, installed as the `e2a-framework` package (`v1.2.0`; `a2c_base.py` imports through its `e2a_base` compatibility module). The classes:
 
 | Class | Role |
 |:---|:---|
 | `DevRequest` | The `TypedDict` input/output contract (Section 4). |
-| `SDLCAssistantAgent` | A2C base agent: NFR injection, approved-cloud and approved-agent checks, `generation_key`. Used alone it generates the service code in one call (the prototype pattern). |
-| `RequirementsAgent`, `CodeGenAgent`, `IaCAgent`, `CICDAgent` | Specialists extending `SDLCAssistantAgent`. `CodeGenAgent` has three modes: observability module, NFR module, business logic. |
+| `SDLCAssistantAgent` | A2C base agent: NFR injection, approved-cloud and approved-agent checks, `generation_key`. Used alone it generates one code module in one call (the prototype pattern). |
+| `RequirementsAgent`, `CodeGenAgent`, `IaCAgent`, `CICDAgent` | Specialists extending `SDLCAssistantAgent`. `CodeGenAgent` writes the observability module and the NFR module; its business-logic mode remains selectable but neither order runs it since v1.2. |
 | `CodeCriticAgent` | Model review plus deterministic NFR-pattern check; reports the lower score (Section 3.4). |
 | `SDLCAgentChain` | The node sequence `BaseWorkflow.execute()` runs as one unit. |
 | `SDLCWorkflow` | `BaseWorkflow` subclass; `execute(dev_request, config)` is inherited and never overridden. |
@@ -256,8 +265,8 @@ Policy checks that depend on configuration at run time (for example the `approve
 1. It reads the settings below, builds the sequence (NFR-first by default), and reads the version of each artifact path when `project_root` is set.
 2. It runs each agent with the per-step idempotency key `<generation_key>:<agent>:<mode>`, the shared deadline, and the agent limits. The critic runs with `model_id = critic_model_id` when that is set.
 3. The deadline is checked before each step. An agent that records an error stops the chain with status `AGENT_FAILED`.
-4. While the critic score is below `a2c_min_confidence` it regenerates the business code, passing the critic's `missing` list back as `regeneration_feedback`, up to `a2c_max_regenerations` times. If the score is still below the threshold the chain stops with status `CRITIC_THRESHOLD_NOT_MET`; nothing is written.
-5. Only after the critic passes does it write the artifacts (default paths: `docs/a2c/spec.md`, `src/generated/observability.<ext>`, `src/generated/nfr.<ext>`, `src/generated/service.<ext>`, `infra/main.tf`, `.github/workflows/a2c-ci.yml`; overridable with `a2c_artifact_paths`). `status` becomes `GENERATED`.
+4. While the critic score is below `a2c_min_confidence` it regenerates the NFR module, passing the critic's `missing` list back as `regeneration_feedback`, up to `a2c_max_regenerations` times. If the score is still below the threshold the chain stops with status `CRITIC_THRESHOLD_NOT_MET`; nothing is written.
+5. Only after the critic passes does it write the artifacts (default paths: `docs/a2c/spec.md`, `src/generated/observability.<ext>`, `src/generated/nfr.<ext>`, `infra/main.tf`, `.github/workflows/a2c-ci.yml`; overridable with `a2c_artifact_paths`). `status` becomes `GENERATED`.
 
 **Settings** (registered in E2A's central registry, resolved kwargs > config > environment > default):
 
@@ -297,7 +306,9 @@ class DevRequest(TypedDict, total=False):
     spec: str               # output from RequirementsAgent
     generated_observability: str   # CodeGenAgent, observability mode
     generated_nfr_module: str      # CodeGenAgent, NFR mode
-    generated_code: str     # CodeGenAgent, business-logic mode
+    generated_code: str     # CodeGenAgent business mode (not run since v1.2)
+    port: int; package_name: str   # from P0 (v1.1.2)
+    settings: List[dict]    # declared app settings (v1.2)
     generated_iac: str      # output from IaCAgent
     generated_cicd: str     # output from CICDAgent
     critic_report: dict     # CodeCriticAgent: score, model_score, pattern_check, missing, passed
@@ -424,8 +435,9 @@ A2C applies the same NFR-First development sequence from the E2A Enterprise Fram
 | 3 | `CodeGenAgent` (Observability) | Observability module: structlog JSON, OTel tracing, CloudWatch custom metrics, SLO checker, error budget | CDS analytical views + SAP Cloud ALM integration |
 | 4 | `CICDAgent` | GitHub Actions: OIDC auth, RAGAS eval gate, Trivy scan, ECR push, ECS deploy, auto-rollback | SAP CTS+ transport with ATC approval gates |
 | 5 | `CodeGenAgent` (NFRs) | NFR module: pybreaker circuit breakers, tenacity retry, FinOps token routing, policy-as-code YAML, LLM cache | ABAP resilience framework + authorisation objects |
-| 6 | `CodeGenAgent` (Business Logic) | Agent classes, RAG pipeline, tool microservices, FastAPI routers, LangGraph workflow — built on Phase 1-5 foundation | BIMP classes, determinations, actions — built on tested foundation |
-| 7 | `CodeCriticAgent` | Validation report: NFR patterns confirmed present, architecture layers verified, quality score ≥ 0.75 | ATC transport check + authorisation review + quality gate |
+| 6 | `CodeCriticAgent` | Validation report: NFR patterns confirmed present, architecture layers verified, quality score ≥ 0.75 | ATC transport check + authorisation review + quality gate |
+
+*Since v1.2 the business logic (former phase 6: agent classes, RAG pipeline, tool microservices, routers, workflow) is not generated by A2C. G2C generates the service's E2A v1.2 agents, workflow, governance, validation and tool stubs from the request's `harness.agents` declaration, and P0 the routers; A2C's critic reviews the observability and NFR modules.*
 
 ## 6. Domain-Specific Use Cases
 
@@ -491,7 +503,7 @@ class IaCGenTool(BaseToolService):
 |:---|:---|:---|
 | What it governs | Agentic AI applications (agents, RAG, tools, workflows) | Developer platform agents that generate enterprise software |
 | Input to `run()` | `AgentState` (query, intent, retrieved_docs, response) | `DevRequest` (project_name, project_type, mandatory_nfrs, target_cloud) |
-| Output of `run()` | Updated `AgentState` with response, tokens, trace_id | Updated `DevRequest` with generated_code, generated_iac, generated_cicd, critic_report |
+| Output of `run()` | Updated `AgentState` with response, tokens, trace_id | Updated `DevRequest` with generated_observability, generated_nfr_module, generated_iac, generated_cicd, critic_report |
 | `_apply_policy` enforces | Tool deny-lists, must-cite rules, approval gates, governance violations | Mandatory NFR injection, approved cloud validation, business dedup key |
 | Quality gate | `CriticAgent`: RAGAS groundedness ≥ 0.85 | `CodeCriticAgent`: model review and deterministic NFR-pattern check (comments ignored); the lower score must be ≥ 0.75 |
 | Tool layer | `BaseToolService`: HTTP API calls to microservices | `BaseToolService`: file write, IaC validate, YAML generate |
@@ -538,6 +550,36 @@ state['trace_id'] = 'uuid4-...'     # observability correlation ID
 *A2C Framework (Architecture-to-Code) · Built on E2A · github.com/subhamviky/e2a-framework · Subham Gupta*
 
 ---
+
+## 9. Declarations and Upgrades (v1.2)
+
+A request declares what projects used to patch by hand after scaffolding. `aidlc-build` reads each declaration once and the component that owns the file writes it.
+
+```json
+{
+  "context": {"project_name": "orders", "runtime": "python", "platform": "aws",
+              "dependencies": ["fastapi>=0.111"], "repository_layout": "monorepo"},
+  "a2c_sdlc": {
+    "settings": [
+      {"name": "TABLE_NAME", "terraform": "aws_dynamodb_table.orders.name"},
+      {"name": "LEDGER_URL", "default": "http://ledger.internal:8080"},
+      {"name": "LEDGER_TOKEN", "secret": true}
+    ],
+    "contracts": ["contracts/order-event.v1.schema.json"]
+  }
+}
+```
+
+| Declaration | Result |
+|:---|:---|
+| `settings` | A Terraform variable and runtime environment variable per setting on AWS, GCP and Azure; a secret is declared in the cloud's secret store and referenced (Terraform never holds its value); `terraform` takes the value from the project's own Terraform; `.env.example`; `settings.py` (`load_settings()` names missing settings at start-up) or an `app:` block in `application.yml`; one `terraform test` assertion per setting. |
+| `contracts` | Pydantic models (Python) or Java records (Jackson) and a test that round-trips the schema's `examples`; unsupported JSON-Schema keywords are refused by name. |
+| `dependencies` (Java) | `group:artifact[:version][@scope]` is a Maven coordinate; a short name is a Spring starter. |
+| `repository_layout: monorepo` | The generated workflows run from the repository root, scoped to the service (`paths`, working directories, `hashFiles`, Maven cache). |
+
+**Upgrades.** Every build writes `<project>/.a2c/manifest.json` (version, request, a SHA-256 per generated file). `aidlc-build --upgrade <project>` regenerates with the installed version and replaces the files you have not changed, adds new ones, writes `a2c-upgrade.patch` for the files you changed (apply with `git apply --reject`), and never touches files outside the manifest. A project scaffolded before v1.2 passes `--baseline <dir>`: the same request rebuilt with its original A2C version.
+
+The design is in the A2C Framework Design Document, Sections 5.6, 5.7 and 8.8.
 
 ## Related Documents and Diagrams
 

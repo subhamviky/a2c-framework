@@ -8,14 +8,13 @@ digraph G {
   o [label="3 CodeGenAgent (observability) → generated_observability"];
   d [label="4 CICDAgent → generated_cicd"];
   n [label="5 CodeGenAgent (nfr) → generated_nfr_module"];
-  b [label="6 CodeGenAgent (business) → generated_code"];
-  k [label="7 CodeCriticAgent → critic_report\nmin(model score, NFR pattern score)", fillcolor="#E6F4F5", color="#0F7C8C"];
+  k [label="6 CodeCriticAgent → critic_report\nmin(model score, NFR pattern score)", fillcolor="#E6F4F5", color="#0F7C8C"];
   q [label="score ≥ 0.75 ?", shape=diamond, fillcolor="#FFFFFF", width=1.8];
   w [label="LocalArtifactWriter → project_root\nconditional on the version read at start", fillcolor="#DCE8F5"];
   ok [label="status GENERATED · outcome COMMITTED", fillcolor="#E3F1E3", color="#3B7D3B"];
   f [label="CRITIC_THRESHOLD_NOT_MET\nnothing written", fillcolor="#FBE9E7", color="#C0504D", width=2.6];
-  in->r->i->o->d->n->b->k->q; q->w [label="yes"]; w->ok;
-  q->b [style=dashed, label=" no, ≤ 2 regenerations\n with critic findings", constraint=false];
+  in->r->i->o->d->n->k->q; q->w [label="yes"]; w->ok;
+  q->n [style=dashed, label=" no, ≤ 2 regenerations\n of the NFR module\n with critic findings", constraint=false];
   q->f [label="no, after 2"];
   {rank=same; q; f}
 }

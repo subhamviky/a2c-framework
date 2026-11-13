@@ -1,0 +1,23 @@
+digraph G {
+  graph [rankdir=LR, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>v1.2 — what the request declares, and where it lands</b>>, fontcolor="#1F3864", nodesep=0.25, ranksep=0.5, pad=0.2];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=10, fontcolor="#1F3864", margin="0.12,0.05"];
+  edge [color="#2E4A6B", fontname="DejaVu Sans", fontsize=9];
+  subgraph cluster_req { label="AI-DLC request"; fontcolor="#0F7C8C"; color="#0F7C8C"; style="rounded";
+    s [label="a2c_sdlc.settings\n{name, default?, secret?, terraform?}"];
+    c [label="a2c_sdlc.contracts\n[JSON Schema paths]"];
+    d [label="context.dependencies\nstarter | group:artifact[:version][@scope]"];
+    l [label="context.repository_layout\nsingle | monorepo"];
+    h [label="harness.agents / workflow / governance\n(C-01, G2C)"];
+  }
+  tf [label="infra/main.tf\nvariables · runtime env · secret references", fillcolor="#DCE8F5"];
+  tt [label="infra/tests/<cloud>.tftest.hcl\none assertion per setting", fillcolor="#DCE8F5"];
+  code [label="src/<pkg>/settings.py  ·  application.yml app:\n.env.example", fillcolor="#E6F4F5", color="#0F7C8C"];
+  mod [label="src/<pkg>/contracts/*.py (Pydantic)\n<group>/contracts/*.java (records)\ntests/test_contracts.py", fillcolor="#E6F4F5", color="#0F7C8C"];
+  pom [label="pom.xml <dependencies>", fillcolor="#E6F4F5", color="#0F7C8C"];
+  wf [label=".github/workflows/<project>-*.yml\npaths filter · working-directory", fillcolor="#E6F4F5", color="#0F7C8C"];
+  g2c [label="agents · workflow · governance\nvalidation · tool stubs · tests", fillcolor="#E6F4F5", color="#0F7C8C"];
+  man [label="<project>/.a2c/manifest.json\nversion · request · SHA-256 per file", shape=note, fillcolor="#FFFFFF"];
+  s->tf [label="A2C IaCAgent"]; s->tt; s->code [label="P0"];
+  c->mod [label="P0"]; d->pom [label="P0"]; l->wf [label="aidlc-build"]; h->g2c [label="G2C"];
+  {tf tt code mod pom wf g2c} -> man [style=dotted, arrowhead=none];
+}

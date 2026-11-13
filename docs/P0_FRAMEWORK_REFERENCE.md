@@ -23,11 +23,26 @@ The P0 Framework fills this gap. It is a new abstract class alongside A2C — no
 | Purpose | Generate project structure, build manifest, git config, Docker, Makefile | Generate microservice code, Terraform IaC, GitHub Actions CI/CD |
 | Input | `ScaffoldRequest` (runtime, build_tool, platform, dependencies) | `DevRequest` (project_type, mandatory_nfrs, target_cloud, context) |
 | Public entry point | `bootstrapper.bootstrap(request, config)` | `sdlc_agent.run(dev_request, config)` |
-| Output | `ScaffoldResult` (scaffolded_files, project_root, build_manifest_path) | `DevRequest` (generated_code, generated_iac, generated_cicd, critic_report) |
+| Output | `ScaffoldResult` (scaffolded_files, project_root, build_manifest_path) | `DevRequest` (generated_observability, generated_nfr_module, generated_iac, generated_cicd, critic_report) |
 | Runs when | Once per project — at project creation | As needed — whenever a new component is generated |
 | Lifecycle Phase | Phase Zero — before any business logic | Phase 2-7 — NFR-First development sequence |
 | NFR enforcement | Structural: correct gitignore, non-root Docker, HEALTHCHECK, Makefile targets | Contract: `_apply_policy()` injects idempotency, circuit breakers, observability |
 | Composable? | Yes — `BootstrapAndGenerateWorkflow` chains P0 -> A2C | Yes — chains from P0 result via dev_request handoff |
+
+### 1.1 What v1.1.2 and v1.2 add
+
+| Release | Field or behaviour | Effect |
+|:---|:---|:---|
+| v1.1.2 | `authors` | Written into `pyproject.toml`; empty by default (no hard-coded author). |
+| v1.1.2 | `port` | One port for the Dockerfile (`EXPOSE`, health check, server command), `docker-compose.yml` and A2C's Terraform; default 8000 (Python), 8080 (Java). |
+| v1.1.2 | `include_paths` | Extra folders copied into the Python image (`policies`, `knowledge`, …). |
+| v1.1.2 | AWS Lambda | `src/<package>/lambda_entry.py` (Mangum) and the `mangum` dependency for Python services on AWS. |
+| v1.2 | `settings` (from `a2c_sdlc.settings`) | One line per setting in `.env.example`; `src/<package>/settings.py` with `load_settings()` and `tests/test_settings.py` (Python), or an `app:` block with `${NAME[:default]}` placeholders in `application.yml` (Java). |
+| v1.2 | `contract_schemas` (from `a2c_sdlc.contracts`) | Pydantic models in `src/<package>/contracts/` and `tests/test_contracts.py` (Python); Java records in `<group>/contracts/`. |
+| v1.2 | `dependencies` with `group:artifact[:version][@scope]` | Maven coordinates in `pom.xml` (version from the Spring Boot BOM when omitted). |
+| v1.2 | E2A v1.2 agents | `aidlc-build` adds `e2a-framework` `v1.2.0` to the dependencies, because the agents G2C generates import `e2a`. |
+
+`aidlc-build` puts the v1.2 fields into the scaffold request; a direct `bootstrap()` caller sets them itself.
 
 ## 2. Framework Architecture
 
@@ -554,7 +569,7 @@ The three frameworks form a layered stack. Each addresses a distinct concern. Al
 | Framework | Concern | Entry point | Input | Output |
 |:---|:---|:---|:---|:---|
 | E2A | Build governed agentic AI systems | `agent.run(state, config)` | AgentState | Updated AgentState with response, tokens, trace_id |
-| A2C | Generate governed microservice code using E2A agents | `sdlc_agent.run(dev_request, config)` | DevRequest | generated_code, generated_iac, generated_cicd, critic_report |
+| A2C | Generate governed NFR and observability modules, IaC and CI/CD using E2A agents | `SDLCWorkflow.execute(dev_request, config)` | DevRequest | generated_observability, generated_nfr_module, generated_iac, generated_cicd, critic_report |
 | P0 (this document) | Generate project structure before A2C runs | `bootstrapper.bootstrap(request, config)` | ScaffoldRequest | project_root, pom.xml/pyproject.toml, Dockerfile, Makefile, README |
 
 ```text

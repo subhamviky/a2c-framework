@@ -109,6 +109,8 @@ check('artifacts written into the P0 workspace', all(os.path.isfile(os.path.join
       ('generated_nfr_module', 'generated_iac', 'generated_cicd', 'spec'))
       and 'generated_code' not in paths)
 check('claim settled SUCCEEDED', store.state_of(r['idempotency_key'], 't1') == 'SUCCEEDED')
+check('the critic validates against the NFR module (no business module since v1.2)',
+      DevPlatformValidationService().validate('CodeCriticAgent', r, cfg)['valid'])
 
 # ---- 3 replay: no model call, artifacts in response
 r2 = SDLCWorkflow(config=cfg).execute(dev(root), cfg)

@@ -14,7 +14,7 @@ Author: Subham Gupta, Staff Architect & AI Architect
 
 The G2C (Generate-to-Class) Framework is the top layer of the framework stack. It provides a set of agentic AI generator classes that use LLM calls to generate E2A abstract classes, A2C abstract classes, and their concrete inherited implementations. Every generator class is written in Python. Every generated output is runtime-agnostic — Python, Java, Node, or Go — determined entirely by the `runtime` parameter in the request.
 
-A developer who needs a new E2A agent, an A2C SDLC workflow, or a complete scaffolded project with business logic provides a single JSON config or natural-language prompt. G2C resolves or generates the abstract class, scaffolds the project structure via P0, generates the business logic via LLM, validates the output through a `GeneratorCriticAgent` quality gate, and writes all files. One call. One result.
+A developer who needs a new E2A agent, an A2C SDLC workflow, or a complete scaffolded project provides a single JSON config or natural-language prompt. G2C resolves or generates the abstract class, scaffolds the project structure via P0, generates the business logic via LLM, validates the output through a `GeneratorCriticAgent` quality gate, and writes all files. One call. One result.
 
 > **The Self-Referential Design Principle.** All G2C generator classes are themselves E2A-governed agents. Every generator inherits from `BaseGeneratorAgent`, which follows the same Template Method Pattern as E2A's `BaseAgent`: one PUBLIC entry point (`generate()`), PROTECTED domain hooks, and PRIVATE infrastructure methods (`__write_file`, `__ensure_idempotency`) and a model call delegated to a `BaseLLMAgentService`. The agent is governed by E2A. The output follows E2A. The framework stack is self-generating.
 
@@ -283,7 +283,7 @@ Generates the E2A base abstract class file — the foundation layer of a new E2A
 | Output — Python | `e2a_base.py` containing `BaseAgent`, `BaseWorkflow`, `BaseRAGPipeline`, `BaseToolService`, `BaseLLMAgentService`, and four Foundation interfaces |
 | Output — Java | `E2ABase.java` with abstract classes and final template methods |
 | System prompt file | `prompts/e2aabstractclassgenerator_system_v1.txt` |
-| Critic validates | All 9 abstract classes present; Single Public Entry Point rule enforced; all access modifiers correct; NFR matrix complete in base class |
+| Critic validates | All 9 abstract classes present; governed entry points only (`run()` / `execute()` not overridden); all access modifiers correct; NFR matrix complete in base class |
 
 ### 5.2 System Prompt — E2A Abstract Generator
 
@@ -417,6 +417,8 @@ Generates the A2C base abstract class file — `SDLCAssistantAgent`, `DevRequest
 
 Generates a complete E2A inherited class project in a single call: resolves or generates the abstract class, runs P0 scaffolding to create the project structure, then generates the concrete inherited agent/workflow/RAG/tool class implementing the developer's business logic.
 
+> **v1.2.** For Python, the default `e2a_contract` is `"1.2"`: the abstract class is not generated (the project depends on the `e2a` package, `e2a-framework` v1.2.0), and `harness.agents`, `harness.workflow` and `harness.governance` generate several agents, a declared workflow, a governance service, validation stubs, tool stubs and contract tests in one call (Section 18). `"e2a_contract": "1.1"` keeps the output described here. Java stays on 1.1 until `e2a-java` exists.
+
 | Field | Value |
 |:---|:---|
 | generator_name | `'E2AInheritedClassGenerator'` |
@@ -539,7 +541,7 @@ class FinancialSettlementSDLCAgent(SDLCAssistantAgent):
 |:---|:---|:---|
 | `'e2a_abstract'` | All 9 abstract classes present; single public entry point per class; PROTECTED methods single-underscore; PRIVATE methods double-underscore; NFR enforcement in base class code, not comments; Foundation classes are interfaces with no shared implementation | Deduct 0.15 per missing class; 0.10 per access modifier violation |
 | `'a2c_abstract'` | `SDLCAssistantAgent` present; `DevRequest` TypedDict fields correct; `_apply_policy()` injects mandatory NFRs; `CodeCriticAgent` integration present; `SDLCWorkflow` chains all 5 agents | Same deduction model |
-| `'e2a_inherited'` | Inherits from correct base; all required protected methods overridden; `run()` NOT overridden; no direct `__private` calls; NFR patterns in code | Deduct 0.25 if `run()` overridden; 0.15 per missing required override |
+| `'e2a_inherited'` | **v1.2 (contract 1.2):** the generated `src/` must pass `e2a.conformance --strict` (rules R1–R3, D1); the rules below apply to contract 1.1. Inherits from correct base; all required protected methods overridden; `run()` NOT overridden; no direct `__private` calls; NFR patterns in code | Deduct 0.25 if `run()` overridden; 0.15 per missing required override |
 | `'a2c_inherited'` | Extends `SDLCAssistantAgent`; `_apply_policy()` injects team-specific NFRs without removing A2C mandatory ones; `DevRequest` fields appropriate to domain | Same as e2a_inherited |
 
 ### 9.3 Critic Response Format and Score Routing
@@ -975,6 +977,43 @@ Claims are namespaced per framework: G2C claims `g2c:<generator_key>`, P0 claims
 The tests assert these behaviours: exactly one generation among many concurrent identical requests; a typed `in_progress`, `replay`, `conflict` or `recovery_required` outcome for every other caller; a retryable settlement for a rejected or timed-out model call and for a cancelled run; a final settlement when the critic threshold is not met after two regenerations; an `UNKNOWN` settlement when a failure follows the first write; a replay whose output file is missing reported as `recovery_required`, not re-generated; and at most one deletion of a shared abstract class under 200 racing releases.
 
 ---
+
+## 18. E2A v1.2 Generation and Several Agents (v1.2)
+
+Since A2C v1.2.0, `E2AInheritedClassGenerator` generates code for the E2A v1.2 contract (hooks that declare `state, ctx, io_read, io_modify, messages, failed_keys`), and one request can declare several agents. The module is `g2c_v12.py`; the design is in the G2C Framework Design Document, Section 5.6.
+
+### 18.1 The request
+
+| Field | Meaning | Default |
+|:---|:---|:---|
+| `harness.e2a_contract` | `"1.2"` or `"1.1"` | `"1.2"` for Python `e2a_inherited`; `"1.1"` for Java and for `a2c_inherited` |
+| `harness.agents` | list of `{name, kind: "model" \| "deterministic", reads, writes, output_schema}` | one agent from `harness.agent_name` |
+| `harness.workflow` | `{name, steps: [{step, agent} \| {step, route_by, agents, material}]}` | no workflow |
+| `harness.governance` | `{stages: [...]}` (E2A governance stages) | E2A defaults |
+
+A Java request with `"e2a_contract": "1.2"` is refused: `e2a_contract 1.2 is available for Python only`.
+
+### 18.2 What is generated
+
+| File | Content |
+|:---|:---|
+| `agents/<agent>.py` | v1.2 hooks declaring only what the agent uses: `kind: model` → `_build_messages(state, ctx)`, `_evaluate_output` checking the JSON against a generated Pydantic model of `output_schema`, `_fallback`; `kind: deterministic` → `_build_messages` returns `None`; `reads` → `_prepare(state, ctx, io_read)`; `writes` → `_act(state, ctx, io_modify)` |
+| `workflow/<workflow>.py` | `_build_workflow(self, ctx)` returning the declared `Steps(...)`; idempotency-key and fingerprint stubs that raise `NotImplementedError` |
+| `services/governance.py` | the declared stages; `tool_policy` from each agent's `reads + writes` |
+| `services/validation.py` | one `_validate_<agent>` stub per agent |
+| `tools/__init__.py` | one `BaseToolService` stub per tool; `material = True` for `writes` |
+| `tests/test_agents_contract.py` | one `AgentContract` test class per agent |
+| `tests/test_conformance.py` | runs `e2a.conformance --strict` over `src/` |
+
+No `approved_agents` check is generated (it did nothing in every project).
+
+### 18.3 The application-service module is gone
+
+P0 no longer generates `generated/service.py` or `…ServiceService.java`; no project used them. The NFR module (`generated/nfr.py`, `NfrSupport.java`) and observability stay, and the A2C chain runs six agent steps instead of seven. With `harness.workflow`, the generated FastAPI router calls `workflow.execute(...)`.
+
+### 18.4 Verification
+
+`smoke_test_g2c_v12.py` (17 checks): a three-agent request generates code that passes `e2a.conformance --strict`, its own `AgentContract` tests and one request through the workflow with `SimulatedLLMService`; the single-agent request still works; a Java 1.2 request is refused.
 
 ## Related Documents and Diagrams
 

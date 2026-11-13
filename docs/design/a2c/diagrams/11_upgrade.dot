@@ -1,0 +1,22 @@
+digraph G {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=13, labelloc=t, label=<<b>aidlc-build --upgrade &lt;project&gt; — per generated file</b>>, fontcolor="#1F3864", nodesep=0.3, ranksep=0.3, pad=0.2];
+  node [shape=box, style="rounded,filled", fillcolor="#F4F8FC", color="#1F3864", fontname="DejaVu Sans", fontsize=10, fontcolor="#1F3864", margin="0.12,0.05"];
+  edge [color="#2E4A6B", fontname="DejaVu Sans", fontsize=9];
+  start [label="regenerate the request with the installed A2C\ninto a temporary folder", shape=note, fillcolor="#FFFFFF"];
+  base [label="old hashes: .a2c/manifest.json,\nor --baseline <dir> (the original version, rebuilt)"];
+  q1 [label="file exists in the project?", shape=diamond, fillcolor="#FFFFFF"];
+  q2 [label="was it generated before?", shape=diamond, fillcolor="#FFFFFF"];
+  q3 [label="current = new?", shape=diamond, fillcolor="#FFFFFF"];
+  q4 [label="old generated = new?", shape=diamond, fillcolor="#FFFFFF"];
+  q5 [label="current = old generated?", shape=diamond, fillcolor="#FFFFFF"];
+  add [label="added", fillcolor="#E3F1E3", color="#3B7D3B"];
+  kept [label="kept deleted", fillcolor="#FFFFFF"];
+  unch [label="unchanged (yours stays)", fillcolor="#FFFFFF"];
+  rep [label="replaced", fillcolor="#E3F1E3", color="#3B7D3B"];
+  pat [label="yours: a hunk in a2c-upgrade.patch\n(git apply --reject)", fillcolor="#FFF4D6", color="#B7791F"];
+  done [label="new manifest written · files outside the manifest never touched", shape=note, fillcolor="#FFFFFF"];
+  start->base->q1; q1->q2 [label="no"]; q2->add [label="no"]; q2->kept [label="yes"];
+  q1->q3 [label="yes"]; q3->unch [label="yes"]; q3->q4 [label="no"]; q4->unch [label="yes"];
+  q4->q5 [label="no"]; q5->rep [label="yes"]; q5->pat [label="no"];
+  {add kept unch rep pat} -> done [style=dotted, arrowhead=none];
+}

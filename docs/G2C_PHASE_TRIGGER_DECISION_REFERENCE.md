@@ -23,6 +23,8 @@ The G2C framework operates across four interleaved layers:
 - **P0 (Project Bootstrapper)** — scaffolds the project directory, manifest, and environment templates
 - **G2C Orchestrator** — coordinates all phases via `BootstrapAndGenerateWorkflow`
 
+> **Names and v1.2.** The layer names above are this document's original wording. In the rest of the suite, E2A is the governed agentic AI framework (the `e2a` package) and A2C is the architecture-to-code layer. Since A2C v1.2.0, a Python service on the E2A v1.2 contract (the default) reuses the `e2a` package instead of generating base abstract classes, so the E2A abstract phase is always **[SKIP]** for it; the decision matrix applies unchanged to `"e2a_contract": "1.1"` and to Java. See the G2C Framework Reference, Section 18.
+
 In practice, a team may already possess one or more of these layers from a prior service build. Blindly re-running all seven phases wastes compute, risks overwriting hand-tuned artifacts, and introduces unnecessary IaC drift. This document formalises the four canonical entry-point scenarios and specifies the exact phase activation pattern for each.
 
 > **✔ TIP** This document is authoritative for phase-trigger decisions within portfolio projects: aws-reconciliation-engine, order-to-cash-agentic-ai, and financial-settlement-platform.
