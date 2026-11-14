@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.4.0 — Generated services bind their model from a profile (hub design note MP-03, P27)
+
+Requires E2A `v1.6.1` (and, for Java, e2a-java `1.6.1`, installed from E2A's tag).
+
+### Added
+- **A composition root in every generated Python E2A service:** `src/<package>/services/bindings.py`.
+  - `bindings()` binds the model and the other E2A seams with `e2a.bindings_from_profile(...)`, once, with `verify=True`.
+  - `service_config()` returns the config for `workflow.execute()` / `agent.run()`: the bound `llm_service` and engines, the profile's settings, and the service's tools.
+  - The profile is `E2A_PROVIDER_PROFILE`, else the request's default. No generated source constructs a model service by name.
+- **`a2c_sdlc.provider_profile`** (default `simulated`, E2A's built-in profile): the deployment's default profile, written into the composition root.
+- **`a2c_sdlc.provider_requirement`**: a pip requirement added to the generated project, for the provider package whose profile is named (for example `e2a-managed-providers[anthropic-aws] @ git+...`).
+- **Generated tests:** `tests/test_bindings.py` (the composition root binds from a profile); `tests/test_workflow.py` binds the model from the `simulated` profile, so the tests need no provider account whatever profile the deployment uses.
+- **`smoke_test_profile_binding.py`** (14 checks), which also runs the generated project's own tests.
+
+### Changed
+- **Pins:** `e2a-framework` `@v1.6.1` in `pyproject.toml` and in generated Python projects (`a2c_cli.E2A_REF`); CI checks out E2A `v1.6.1`; `g2c_java12.E2A_JAVA_VERSION` is `1.6.1`. E2A v1.4 to v1.6.1 are additive, and every existing smoke test passes unchanged on v1.6.1.
+
+### Not changed
+- **Java services:** e2a-java has no bindings yet, so `provider_profile` on a Java service is refused, naming why. Generated Java tests keep `SimulatedLlmService`.
+- **A2C's own generation model** (`a2c_template_llm.build_template_llm`): the deterministic template service A2C itself runs on is not a deployment choice.
+
 ## v1.3.0 — v1.1 generation removed (design note V13-01)
 
 Requires E2A `v1.3.0` (and, for Java, e2a-java `1.3.0`, installed from E2A's tag).

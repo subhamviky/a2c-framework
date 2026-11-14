@@ -313,10 +313,25 @@ settings in Terraform, the runtime and the code; models from the contracts; root
 monorepo; and a manifest so that `aidlc-build --upgrade <project>` can bring the scaffold to a later
 A2C version. Examples: [`examples/requests/`](examples/requests/).
 
+**The model is bound from a profile (v1.4).** A generated Python E2A service has a composition
+root, `services/bindings.py`: `bindings()` calls `e2a.bindings_from_profile(...)` and
+`service_config()` returns the config for `workflow.execute()`. The profile is
+`E2A_PROVIDER_PROFILE`, else the request's `a2c_sdlc.provider_profile` (default `simulated`,
+which ships with E2A and needs no account). To deploy on a managed provider, name its profile and
+the package that provides it:
+
+```json
+"a2c_sdlc": {"provider_profile": "anthropic_bedrock",
+             "provider_requirement": "e2a-managed-providers[anthropic-aws] @ git+https://..."}
+```
+
+The generated tests always bind `simulated`, so they run without a provider account.
+
 ## Compatibility
 
 | a2c-framework | e2a-framework | capability-oriented-dsa (used by generated services) |
 |---|---|---|
+| `v1.4.0` | `v1.6.1` (and e2a-java `1.6.1` for Java) | `v0.2.x`, `v0.3.x` |
 | `v1.3.0` | `v1.3.0` (and e2a-java `1.3.0` for Java) | `v0.2.x`, `v0.3.x` |
 | `v1.2.2` | `v1.2.2` | `v0.2.x`, `v0.3.x` |
 | `v1.2.1` | `v1.2.2` | `v0.2.x`, `v0.3.x` |

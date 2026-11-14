@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 import g2c_v12
 from g2c_v12 import HarnessError, example, pascal
 
-E2A_JAVA_VERSION = '1.3.0'
+E2A_JAVA_VERSION = '1.6.1'
 STAGES = {        # the stages e2a-java has -> (expression, TODO comment)
     'capacity': ('new CapacityStage(() -> true)', 'TODO: admit only while the service has capacity'),
     'firewall': ('new FirewallStage(List.of("ignore (all )?(previous|prior) instructions"), 4000, List.of("text"))',
