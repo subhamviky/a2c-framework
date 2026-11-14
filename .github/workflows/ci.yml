@@ -27,7 +27,7 @@ jobs:
           distribution: temurin
           java-version: "21"
       - name: Install the package
-        run: pip install ".[api]"
+        run: pip install ".[api]" pytest      # pytest: smoke_test_profile_binding runs the generated project's own tests
       - name: Packaging check (the installed package, not the checkout)
         shell: bash
         working-directory: ${{ runner.temp }}
@@ -50,7 +50,7 @@ jobs:
         run: |
           for t in smoke_test_generator_concurrency smoke_test_g2c_contract smoke_test_a2c smoke_test_aidlc_integration smoke_test_template_mode smoke_test_declarations smoke_test_g2c_v12 smoke_test_evaluation smoke_test_java12 smoke_test_profile_binding; do
             echo "== $t"
-            python -W always "$t.py" > "$RUNNER_TEMP/$t.log" 2>&1; rc=$?
+            rc=0; python -W always "$t.py" > "$RUNNER_TEMP/$t.log" 2>&1 || rc=$?   # keep going: the log is shown below
             tail -1 "$RUNNER_TEMP/$t.log"
             test "$rc" -eq 0 || { tail -40 "$RUNNER_TEMP/$t.log"; exit 1; }
             # v1.3 preparation (V13-01): nothing may run on E2A's v1.1 adapters. Match E2A's own

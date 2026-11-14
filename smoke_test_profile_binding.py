@@ -59,7 +59,8 @@ with tempfile.TemporaryDirectory() as tmp:
           and (root / 'tests/test_bindings.py').is_file())
     run = subprocess.run([sys.executable, '-m', 'pytest', '-q', '-p', 'no:cacheprovider', 'tests'], cwd=root,
                          capture_output=True, text=True, env={**__import__('os').environ, 'PYTHONPATH': str(root / 'src')})
-    check('B-4 the generated tests pass: ' + (run.stdout.strip().splitlines() or ['?'])[-1], run.returncode == 0)
+    check('B-4 the generated tests pass: ' + ((run.stdout + run.stderr).strip().splitlines() or ['?'])[-1],
+          run.returncode == 0)
 
     # B-5: one request through the generated workflow, with the config from the composition root
     sys.path.insert(0, str(root / 'src'))
