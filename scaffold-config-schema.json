@@ -220,6 +220,15 @@
         "context": {
           "type": "string",
           "description": "Domain context for A2C code generation prompt"
+        },
+        "provider_profile": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+          "description": "v1.4: the E2A profile the generated Python service binds its model from by default (E2A_PROVIDER_PROFILE overrides it). Default: simulated"
+        },
+        "provider_requirement": {
+          "type": "string",
+          "description": "v1.4: a pip requirement for the provider package whose profile is named, added to the generated project"
         }
       }
     }

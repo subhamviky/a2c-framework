@@ -30,7 +30,7 @@ from a2c_base import MANDATORY_NFRS
 import g2c_java12
 import g2c_v12
 
-E2A_REF = 'v1.3.0'          # the E2A version this A2C release generates for (its own pin)
+E2A_REF = 'v1.6.1'          # the E2A version this A2C release generates for (its own pin)
 from a2c_contracts import contracts_from
 from a2c_layout import LAYOUTS, move_workflows
 from a2c_upgrade import UpgradeError, clean_request, upgrade, write_manifest
@@ -180,6 +180,9 @@ def _prepare(request: Dict[str, Any], output: Path) -> Dict[str, Any]:
                          'agents are generated against e2a-java; use "1.2" (the default)')
     if harness['e2a_contract'] == '1.2' and runtime not in ('python', 'java'):
         raise ValueError(f'e2a_contract 1.2 is available for Python and Java (e2a-java), not {runtime}')
+    if a2c.get('provider_profile') and not (harness['e2a_contract'] == '1.2' and runtime == 'python'):
+        raise ValueError('a2c_sdlc.provider_profile needs a Python service on E2A: profiles and bindings are '
+                         'e2a.bindings (e2a-java has no bindings yet)')
     if harness['e2a_contract'] == '1.2' and runtime == 'java':
         g2c_java12.normalize(harness)               # D-01: agents / workflow / governance, e2a-java's stages
         deps = ctx.setdefault('dependencies', [])   # Maven coordinates (P-5): the generated code and tests
@@ -194,6 +197,12 @@ def _prepare(request: Dict[str, Any], output: Path) -> Dict[str, Any]:
         deps = ctx.setdefault('dependencies', [])   # the generated code and tests import e2a
         if not any(str(d).replace('_', '-').startswith('e2a-framework') for d in deps):
             deps.append(f'e2a-framework @ git+https://github.com/subhamviky/e2a-framework.git@{E2A_REF}')
+        # v1.4 (MP-03, P27): the service binds its model from a profile; "simulated" ships with E2A.
+        # A profile of a provider package needs that package: a2c_sdlc.provider_requirement adds it
+        harness['provider_profile'] = a2c.get('provider_profile') or harness.get('provider_profile') or 'simulated'
+        requirement = a2c.get('provider_requirement')
+        if requirement and requirement not in deps:
+            deps.append(requirement)
     # v1.2 (A-3): app settings are declared once, in a2c_sdlc; P0 and A2C both read them
     ctx['settings'] = normalize_settings(a2c.get('settings') or ctx.get('settings'))
     a2c['settings'] = ctx['settings']
