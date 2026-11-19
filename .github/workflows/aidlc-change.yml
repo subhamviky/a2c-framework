@@ -62,6 +62,21 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - name: Set up Java (a Maven project is compiled and tested with the change)
+        if: hashFiles(format('{0}/pom.xml', inputs.project)) != ''
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Install e2a-java at the version the project names (aidlc-change reads what it owns)
+        if: hashFiles(format('{0}/pom.xml', inputs.project)) != ''
+        run: |
+          v=$(python -c "import re, sys; m = re.search(r'<artifactId>e2a-core</artifactId>\s*<version>([^<]+)', open(sys.argv[1]).read()); print(m.group(1) if m else '')" "$PROJECT/pom.xml")
+          if [ -n "$v" ]; then
+            git clone -q --depth 1 --branch "v$v" https://github.com/subhamviky/e2a-framework.git "$RUNNER_TEMP/e2a"
+            mvn -B -q -f "$RUNNER_TEMP/e2a/java/pom.xml" install -DskipTests
+          fi
       - name: Install aidlc-change (and the profile's package)
         run: |
           pip install "a2c-framework @ git+https://github.com/subhamviky/a2c-framework.git@${A2C_REF}" pytest

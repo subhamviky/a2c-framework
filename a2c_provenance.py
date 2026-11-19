@@ -367,21 +367,24 @@ def _version_file(project_dir: Path) -> Tuple[Optional[Path], Optional[str]]:
 
 
 def bump_version(project_dir: Path, kind: str, released: Optional[str]) -> Optional[Dict[str, str]]:
-    """Move the project's version for this change; returns {file, from, to} or None."""
+    """Move the project's version for this change; returns {file, from, to} or None. A suffix such as
+    Maven's -SNAPSHOT is kept: 0.1.0-SNAPSHOT names the next release 0.1.0."""
     path, current = _version_file(project_dir)
-    if path is None or not _SEMVER.match(current or ''):
+    match = re.match(r'^(\d+\.\d+\.\d+)(-[0-9A-Za-z.-]+)?$', current or '')
+    if path is None or not match:
         return None
-    new = next_version(current, released.lstrip('v') if released else None, kind)
+    core, suffix = match.group(1), match.group(2) or ''
+    new = next_version(core, released.lstrip('v') if released else None, kind) + suffix
     if new == current:
         return {'file': path.name, 'from': current, 'to': current}
     text = path.read_text(encoding='utf-8')
     if path.suffix == '.toml':
-        match = _PY_VERSION.search(text)
-        text = text[:match.start(1)] + new + text[match.end(1):]
+        found = _PY_VERSION.search(text)
+        text = text[:found.start(1)] + new + text[found.end(1):]
     else:
         stripped = re.sub(r'(?s)<parent>.*?</parent>', lambda m: ' ' * len(m.group(0)), text)
-        match = re.search(r'<version>([^<]+)</version>', stripped)
-        text = text[:match.start(1)] + new + text[match.end(1):]
+        found = re.search(r'<version>([^<]+)</version>', stripped)
+        text = text[:found.start(1)] + new + text[found.end(1):]
     path.write_text(text, encoding='utf-8')
     return {'file': path.name, 'from': current, 'to': new}
 

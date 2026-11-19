@@ -9,9 +9,9 @@
 | Framework | A2C — Architecture-to-Code (developer-platform framework built on E2A) |
 | Document type | Design Document (HLD + LLD) |
 | Author | Subham Gupta, Principal Platform Architect |
-| Source baseline | `subhamviky/a2c-framework` `v1.5.0` — `a2c_base.py`, `a2c_settings.py`, `a2c_contracts.py`, `a2c_layout.py`, `a2c_upgrade.py`, `a2c_cli.py`, and since v1.5 `a2c_provenance.py`, `a2c_change.py`, `a2c_signed_push.py`; on `subhamviky/e2a-framework` `v1.6.1` (the `e2a` package) |
-| Date | 19 November 2026 (v1.5.0, Sections 5.9 and 8.9; v1.2.1 on 13 November 2026; baseline 7 November 2026) |
-| Status | Aligned to A2C v1.5.0 and its smoke tests (wave C notes C-01, C-02 and C-04; wave D note D-01; hub note AD-01 for v1.5) |
+| Source baseline | `subhamviky/a2c-framework` `v1.5.1` — `a2c_base.py`, `a2c_settings.py`, `a2c_contracts.py`, `a2c_layout.py`, `a2c_upgrade.py`, `a2c_cli.py`, and since v1.5 `a2c_provenance.py`, `a2c_change.py`, `a2c_change_java.py`, `a2c_signed_push.py`; on `subhamviky/e2a-framework` `v1.6.1` (the `e2a` package) |
+| Date | 19 November 2026 (v1.5.0 and v1.5.1, Sections 5.9 and 8.9; v1.2.1 on 13 November 2026; baseline 7 November 2026) |
+| Status | Aligned to A2C v1.5.1 and its smoke tests (wave C notes C-01, C-02 and C-04; wave D note D-01; hub note AD-01 for v1.5) |
 
 ## 1. Introduction
 
@@ -278,7 +278,8 @@ Hub design note AD-01. Before v1.5, AI-DLC only created: nothing changed code th
 | Region | Allowed |
 |---|---|
 | Developer-owned hooks, functions, tests, new modules | Yes, inside the plan |
-| A method E2A owns (`run`, `execute`, the sealed lifecycle), defined or overridden | No: refused before writing; conformance would also block it |
+| A method E2A owns (`run`, `execute`, the sealed lifecycle), defined or overridden | No: refused before writing; conformance (Python) or the compiler and the owned-method check (Java) would also block it |
+| Java: a module-level region, or an overloaded member by name | No: Java has no module-level code; overloads are changed by replacing members one at a time |
 | `.a2c/`, `.env*`, `.git/` | Never |
 | `pyproject.toml`, `pom.xml`, lock files, `CHANGELOG.md` | No: versions and the changelog are the tool's, dependencies are declarations |
 | Terraform, `.github/`, Dockerfiles, compose files | Only with `--allow-infra` |
@@ -288,11 +289,11 @@ Hub design note AD-01. Before v1.5, AI-DLC only created: nothing changed code th
 | Check | Passes when |
 |---|---|
 | Before the change | The working tree is clean and the project's tests already pass on the base commit |
-| Compile | Every changed Python file compiles |
-| Conformance | `e2a.conformance` reports no error that the base commit did not have |
+| Compile | Every changed Python file compiles; a Java project compiles with Maven (with the tests, or `test-compile` with `--no-tests`) |
+| Conformance | `e2a.conformance` reports no error that the base commit did not have; in Java, no class defines a method e2a-java declares `final` |
 | Secret scan | E2A's release-gate patterns find nothing in the changed files |
-| Critic | `GeneratorCriticAgent.concurrency_findings` finds nothing in the changed files |
-| Tests | The project's tests pass (`pytest` with `src/` on the path, or `--test-command`) |
+| Critic | `GeneratorCriticAgent.concurrency_findings` finds nothing in the changed Python files; in Java, no direct provider SDK import and no own semaphore or rate limiter |
+| Tests | The project's tests pass (`pytest` with `src/` on the path; `mvn -B -q verify` for Maven; or `--test-command`) |
 | Failure after the last attempt | Files restored, branch removed, `aidlc-change.patch` and `aidlc-change-report.json` left for the developer; nothing committed |
 
 **Table 10 — What every run records**
@@ -305,7 +306,7 @@ Hub design note AD-01. Before v1.5, AI-DLC only created: nothing changed code th
 | `.a2c/manifest.json` `origins` | Each file's origin, `generated` or `changed`, and its change id. `--upgrade` never replaces a `changed` file: it gets a patch, as a hand-edited file does |
 | Audit event | One JSON line per run on the `a2c.audit` logger and stderr (`AIDLC-AUDIT`): `actor`, `actor_is_agent`, `initiated_by`, `initiated_via`, `change_id`, `kind`, `model`, `outcome` (committed, refused, declined, failed verification), `files_changed`, `run_url` |
 
-The model is bound through E2A: `--llm profile:<name>` takes any provider profile (`e2a.bindings_from_profile`), and `replay:<file>` plays recorded answers, which is how the tests run offline and how a reviewed session can be re-run. `--record` saves a live session's answers; the `aidlc-change.yml` workflow keeps them as an artifact. Java projects are refused in v1.5.0, naming v1.5.1.
+The model is bound through E2A: `--llm profile:<name>` takes any provider profile (`e2a.bindings_from_profile`), and `replay:<file>` plays recorded answers, which is how the tests run offline and how a reviewed session can be re-run. `--record` saves a live session's answers; the `aidlc-change.yml` workflow keeps them as an artifact. **Java (v1.5.1).** On a Maven project built on e2a-java, `a2c_change_java` reads the sources structurally (comments and literals masked, brace matching): a region is `Type.method` or `Type`, and a member's region starts at its Javadoc or annotations. What e2a-java owns is its `final` methods, read with `javap` from the e2a-java jars the `pom.xml` names (`run()` on `BaseAgent`, `execute()` on `BaseWorkflow`); without them A2C's older rule applies, and the compiler enforces `final` in any case. Maven compiles and tests every attempt, so a compile error goes back to the model like a failing test. A version with a suffix keeps it: `0.1.0-SNAPSHOT` becomes `0.2.0-SNAPSHOT` for a feature after release `0.1.0`.
 
 ## 6. Data Contracts
 
@@ -504,6 +505,7 @@ Runtime-configuration policy (`approved_clouds`) stays in `_apply_policy`, becau
 |---|---|
 | `a2c_provenance` | `resolve_developer(git, author, env) → Developer` (refuses with `ProvenanceError`); `start_run(project_dir, kind, change_parts, branch, author, env, reuse_branch) → Run` checks developer, repository, clean tree and branch before anything is written; `finish_run(run, subject, body, model, files, ...)` bumps the version, adds the changelog entry, marks origins, writes the change record, commits with `commit_message(...)` and emits the audit event; `abandon_run(run, model, outcome, reason)` returns to the starting branch, removes the run's branch and emits the event |
 | `a2c_change` | `CodeIndex(project)` (regions, owned methods, `candidates(prompt)`); `make_plan`, `check_plan`; `Edit` and `check_edit(edit, plan, index, allow_infra)`; `apply_edits` returns the originals so `restore` can undo; `verify(project, changed, baseline_conformance, test_cmd)`; `change(args)` runs the steps; `main()` is the `aidlc-change` command |
+| `a2c_change_java` | `mask`, `parse(text) → [JavaType]` with members and line ranges; `locate(text, region)`; `java_defined_names(code)`; `e2a_java_owned(project) → {class: final methods}` through `javap`; `JAVA_CRITIC`. `a2c_change.JavaIndex` and `index_for(project)` choose the index by language |
 | `a2c_signed_push` | `recreate(repo, owner_repo, branch, base, http) → [sha]`: one API commit per local commit, then the branch ref; `python -m a2c_signed_push --branch <b> --base <sha>` in the workflows |
 | `a2c_cli` | `--commit`, `--author`, `--signoff` for a build and for `--upgrade` |
 | `a2c_upgrade` | Keeps `origins` across upgrades; a file whose origin is `changed` is never replaced |
@@ -584,7 +586,7 @@ workflow = SDLCWorkflow(config=config, agents=agents)
 
 ## 13. Verification
 
-**Table 17 — Evidence (v1.2.0, v1.5.0)**
+**Table 17 — Evidence (v1.2.0, v1.5.0, v1.5.1)**
 
 | Suite | What it shows |
 |---|---|
@@ -594,6 +596,7 @@ workflow = SDLCWorkflow(config=config, agents=agents)
 | CI job `declarations` | On AWS, GCP and Azure: a generated service with settings, a secret and a contract passes `terraform fmt` and `terraform test` and its generated tests; a three-agent service passes its tests; a generated monorepo passes `actionlint`. |
 | CI job `images` | The Java image now has a contract, a setting, Flyway and H2, and starts. |
 | `smoke_test_provenance.py` (47 checks, v1.5) | The developer from git or from the workflow's triggering actor; refusals (no identity, another email, a bot, `--author` in a workflow); trailers, `--signoff` only on request, `AIDLC-Run`, the policy's co-author; redaction and `prompt_storage: hash`; versions (never released, after a release, no double bump, major and pre-1.0) in `pyproject.toml` and `pom.xml`; changelog sections; `aidlc-build --commit` locally and as a workflow (author, committer, record, origins, audit, clean tree); refusals for an existing project, a dirty tree, no developer; `--upgrade --commit`; a changed file never replaced by `--upgrade`; the signed push against a fake GitHub API. |
+| `smoke_test_change_java.py` (13 checks, v1.5.1) | On a generated Java service with real Maven builds: the Java reader (Javadoc, braces in comments and strings); the Java index and `javap` ownership (`run()` final on `BaseAgent`); refusals (redefining `run()`, a module-level region, `pom.xml`); a first attempt that does not compile, the second committed; only the member replaced, in the class's indentation; trailers; `0.1.0-SNAPSHOT` → `0.2.0-SNAPSHOT` after release `0.1.0`; changelog, record and new test committed, `target/` not. |
 | `smoke_test_change.py` (30 checks, v1.5) | On a generated service, with recorded model answers: the index and E2A's owned methods; edit refusals (owned method, outside the plan, records, versions, infrastructure without `--allow-infra`); a committed change (branch, author, trailers, files, record, origins, changelog, audit); branch reuse; a retry after a failing test; a failed verification (nothing committed, sources restored, patch and report); a declaration change refused with the way to declare it; an unknown target; a dirty tree; a declined plan; tests already red on the base commit. |
 
 ## 14. Implementation Reality, Gaps and Design Observations
@@ -614,7 +617,7 @@ At the earlier baseline no A2C code existed: `BootstrapAndGenerateWorkflow`'s A2
 | O-8 | Resolved in A2C v1.2.2: A2C's own agents (`SDLCAssistantAgent` and the specialists) use E2A's v1.2 hook contract. | E2A v1.3 removed the v1.1 adapter; A2C runs on it. | None. |
 | O-9 | Settings are values or project Terraform expressions; a setting that needs a per-environment secret version is not modelled. | Teams add version pinning by hand. | Extend the setting declaration if a project needs it. |
 | O-10 | `--upgrade` decides per file; a generator change and your change in the same file need a human (a `.rej` hunk). | Expected: the upgrade never merges silently. | Review `a2c-upgrade.patch`; keep generated files close to their generated form. |
-| O-11 | `aidlc-change` covers Python projects only. | A Java project is refused, naming v1.5.1. | A Java code index on e2a-java classes (AD-01 plan step 3). |
+| O-11 | Resolved in v1.5.1: `aidlc-change` covers Java (Maven, e2a-java). The Java reader is structural, not a full parser. | Unusual syntax may leave a member unindexed; Maven still checks the result. | Use `--target`, or a whole-type edit, if a member is not found. |
 | O-12 | The model's answers are tested by replay; no live model has run a change yet, and GitHub's signing of API commits is tested against a fake API. | The first live run is the check. | Run one real change on order-to-cash (AD-01 plan step 4) and confirm the commit shows as Verified. |
 | O-13 | Locating the code ranks names and docstrings against the prompt. | A vague prompt can plan the wrong region; the plan shows it before any edit. | Use `--target` for an exact change. |
 
@@ -644,6 +647,6 @@ At the earlier baseline no A2C code existed: `BootstrapAndGenerateWorkflow`'s A2
 | G-5, INV-07 | `LocalArtifactWriter`, `SDLCAgentChain._write` | L368, L497 |
 | INV-01, INV-06 | `SDLCWorkflow` (inherits `execute`) | L529 |
 | Declarations, upgrades (v1.2) | `a2c_settings`, `a2c_contracts`, `a2c_layout`, `a2c_upgrade`; `a2c_cli._prepare` | modules |
-| Change mode and provenance (v1.5, AD-01) | `a2c_change`, `a2c_provenance`, `a2c_signed_push`; `a2c_cli --commit`; `a2c_upgrade` origins | modules |
+| Change mode and provenance (v1.5, AD-01) | `a2c_change`, `a2c_change_java`, `a2c_provenance`, `a2c_signed_push`; `a2c_cli --commit`; `a2c_upgrade` origins | modules |
 | Configuration | A2C keys registered | L48–71 |
 | Tools | `CodeGenTool` … `TerraformValidateTool` | L612–670 |

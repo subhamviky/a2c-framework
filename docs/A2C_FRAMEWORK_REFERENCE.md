@@ -629,7 +629,7 @@ aidlc-build --upgrade <project> --commit
 {"prompt_storage": "text", "attribution": {"co_author": false, "co_author_identity": ""}}
 ```
 
-Python projects in v1.5.0; Java in v1.5.1. Design: hub note AD-01 (o2c-platform-hub); A2C design document Sections 5.9 and 8.9.
+Python projects since v1.5.0. Java projects (Maven, e2a-java) since v1.5.1: a region is `Type.method` or `Type`; the methods e2a-java declares `final` (read with `javap`) are owned; Maven compiles and tests every attempt. Design: hub note AD-01 (o2c-platform-hub); A2C design document Sections 5.9 and 8.9.
 
 ## Related Documents and Diagrams
 

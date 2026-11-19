@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.5.1 — aidlc-change for Java (hub design note AD-01, plan step 3)
+
+Requires E2A `v1.6.1` (e2a-java `1.6.1` for Java projects). Additive.
+
+### Added
+- **`aidlc-change` on Maven projects built on e2a-java** (`a2c_change_java.py`):
+  - A light Java reader (comments and literals masked, brace matching) indexes types and their members; a member's region starts at its Javadoc or annotations.
+  - What e2a-java owns is its `final` methods, read with `javap` from the e2a-java jars the project's `pom.xml` names (`run()` on `BaseAgent`, `execute()` on `BaseWorkflow`); without them, A2C's older rule (`run`, `execute`, `retrieve` on a `Base*` class). The compiler enforces `final` too.
+  - Edits replace one member or add members to a type; overloaded members are refused (replace the type's members one at a time); Java has no module-level region.
+  - Maven compiles and tests every attempt (`mvn -B -q verify`; `test-compile` with `--no-tests`); a compile error goes back to the model like a failing test. The critic's Java rule refuses direct provider SDK imports and own semaphores or rate limiters.
+- **Versions with a suffix**: `0.1.0-SNAPSHOT` names the next release `0.1.0`; a feature after release `0.1.0` makes it `0.2.0-SNAPSHOT`.
+- **`aidlc-change.yml`** sets up Java and installs e2a-java at the version the project names.
+- **`smoke_test_change_java.py`** (13 checks, real Maven builds), in CI.
+
 ## v1.5.0 — Changing existing code, and a developer's trail for every run (hub design note AD-01)
 
 Requires E2A `v1.6.1`. Additive: `aidlc-build` without `--commit` behaves as before.
