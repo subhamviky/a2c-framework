@@ -821,7 +821,7 @@ def parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     args = parser().parse_args(argv)
     try:
-        report = change(args)
+        report = change(args, out=_stderr)        # the plan on stderr: stdout is only the JSON result
     except (ChangeError, ProvenanceError) as error:
         print(json.dumps({'success': False, 'error': str(error)}, indent=2))
         return 1
