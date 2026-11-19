@@ -9,9 +9,9 @@
 | Framework | A2C — Architecture-to-Code (developer-platform framework built on E2A) |
 | Document type | Design Document (HLD + LLD) |
 | Author | Subham Gupta, Principal Platform Architect |
-| Source baseline | `subhamviky/a2c-framework` `v1.5.2` — `a2c_base.py`, `a2c_settings.py`, `a2c_contracts.py`, `a2c_layout.py`, `a2c_upgrade.py`, `a2c_cli.py`, and since v1.5 `a2c_provenance.py`, `a2c_change.py`, `a2c_change_java.py`, `a2c_signed_push.py`; on `subhamviky/e2a-framework` `v1.6.1` (the `e2a` package) |
+| Source baseline | `subhamviky/a2c-framework` `v1.5.4` — `a2c_base.py`, `a2c_settings.py`, `a2c_contracts.py`, `a2c_layout.py`, `a2c_upgrade.py`, `a2c_cli.py`, and since v1.5 `a2c_provenance.py`, `a2c_change.py`, `a2c_change_java.py`, `a2c_signed_push.py`; on `subhamviky/e2a-framework` `v1.6.1` (the `e2a` package) |
 | Date | 19 November 2026 (v1.5.0 and v1.5.1, Sections 5.9 and 8.9; v1.2.1 on 13 November 2026; baseline 7 November 2026) |
-| Status | Aligned to A2C v1.5.2 and its smoke tests (wave C notes C-01, C-02 and C-04; wave D note D-01; hub note AD-01 for v1.5) |
+| Status | Aligned to A2C v1.5.4 and its smoke tests (wave C notes C-01, C-02 and C-04; wave D note D-01; hub note AD-01 for v1.5) |
 
 ## 1. Introduction
 
@@ -269,7 +269,7 @@ Hub design note AD-01. Before v1.5, AI-DLC only created: nothing changed code th
 | `Prompt-Sha256` | The exact prompt, also kept (redacted) in the change record |
 | `Co-authored-by` | Off; on only if the project's `.a2c/policy.json` names the tool's identity |
 | `Signed-off-by` | Only with `--signoff`. The tool never adds it on its own: only a person can certify the DCO |
-| Signing | Locally, as the developer's git is configured; in a workflow, `a2c_signed_push` recreates the commit through GitHub's API (author, message and trailers unchanged, no committer given), so GitHub signs it |
+| Signing | Locally, as the developer's git is configured. In a workflow, by default a plain `git push`: the developer is the author, the bot the committer, unsigned. GitHub signs only commits its own bot authors (found on the first live run), so `signed: true`, for repositories that require signed commits, has `a2c_signed_push` create each commit with GraphQL `createCommitOnBranch`: GitHub's bot authors and signs it, and the developer is kept as `Co-authored-by` (GitHub Copilot's model) |
 
 **`aidlc-change`, step by step.** (1) Locate: an index of the project's classes and methods; the methods E2A owns come from E2A's own conformance data (`_framework_classes`), through project base classes too. (2) Plan: the model names targets, kind, subject, body and changelog line; a declaration change (agent, tool, contract, setting, dependency) is refused with the way to declare it (Section 5.6), and the developer confirms the plan. (3) Edit: the model answers with structured edits (`replace`, `add`, `create`), each checked before anything is written (Table 8). (4) Verify (Table 9), with failures sent back to the model, three attempts at most. (5) Record and commit (Table 10).
 
@@ -506,7 +506,7 @@ Runtime-configuration policy (`approved_clouds`) stays in `_apply_policy`, becau
 | `a2c_provenance` | `resolve_developer(git, author, env) → Developer` (refuses with `ProvenanceError`); `start_run(project_dir, kind, change_parts, branch, author, env, reuse_branch) → Run` checks developer, repository, clean tree and branch before anything is written; `finish_run(run, subject, body, model, files, ...)` bumps the version, adds the changelog entry, marks origins, writes the change record, commits with `commit_message(...)` and emits the audit event; `abandon_run(run, model, outcome, reason)` returns to the starting branch, removes the run's branch and emits the event |
 | `a2c_change` | `CodeIndex(project)` (regions, owned methods, `candidates(prompt)`); `make_plan`, `check_plan`; `Edit` and `check_edit(edit, plan, index, allow_infra)`; `apply_edits` returns the originals so `restore` can undo; `verify(project, changed, baseline_conformance, test_cmd)`; `change(args)` runs the steps; `main()` is the `aidlc-change` command |
 | `a2c_change_java` | `mask`, `parse(text) → [JavaType]` with members and line ranges; `locate(text, region)`; `java_defined_names(code)`; `e2a_java_owned(project) → {class: final methods}` through `javap`; `JAVA_CRITIC`. `a2c_change.JavaIndex` and `index_for(project)` choose the index by language |
-| `a2c_signed_push` | `recreate(repo, owner_repo, branch, base, http) → [sha]`: one API commit per local commit, then the branch ref; `python -m a2c_signed_push --branch <b> --base <sha>` in the workflows |
+| `a2c_signed_push` | `recreate(repo, owner_repo, branch, base, http) → [sha]`: creates the branch at the base, then one signed `createCommitOnBranch` per local commit, the developer as `Co-authored-by`; `python -m a2c_signed_push --branch <b> --base <sha>` in the workflows with `signed: true` |
 | `a2c_cli` | `--commit`, `--author`, `--signoff` for a build and for `--upgrade` |
 | `a2c_upgrade` | Keeps `origins` across upgrades; a file whose origin is `changed` is never replaced |
 
@@ -618,7 +618,7 @@ At the earlier baseline no A2C code existed: `BootstrapAndGenerateWorkflow`'s A2
 | O-9 | Settings are values or project Terraform expressions; a setting that needs a per-environment secret version is not modelled. | Teams add version pinning by hand. | Extend the setting declaration if a project needs it. |
 | O-10 | `--upgrade` decides per file; a generator change and your change in the same file need a human (a `.rej` hunk). | Expected: the upgrade never merges silently. | Review `a2c-upgrade.patch`; keep generated files close to their generated form. |
 | O-11 | Resolved in v1.5.1: `aidlc-change` covers Java (Maven, e2a-java). The Java reader is structural, not a full parser. | Unusual syntax may leave a member unindexed; Maven still checks the result. | Use `--target`, or a whole-type edit, if a member is not found. |
-| O-12 | The landscape has no model or cloud account, so the model's answers are always replayed (recorded and committed, `replay:<file>`); no live model has made a change. GitHub's signing of API commits is tested against a fake API until the first workflow run. | The plan, edit rules, checks, commit, signed push and pull request run for real in CI; the model's own judgement is not exercised. | Run `aidlc-change.yml` on order-to-cash with its recorded answers (AD-01 plan step 4) and confirm the commit shows as Verified; bind a profile (`provider_profile`) if a model account is ever added. |
+| O-12 | The landscape has no model or cloud account, so the model's answers are always replayed (recorded and committed, `replay:<file>`); no live model has made a change. The first live run (order-to-cash, v1.5.3) ran the plan, edits, checks, tests and push for real, and showed that GitHub does not sign an API commit authored by someone else. | The model's own judgement is not exercised. A workflow commit is unsigned unless `signed: true`, which makes the bot its author and the developer `Co-authored-by`. | Bind a profile (`provider_profile`) if a model account is ever added; choose `signed: true` only where signed commits are required. |
 | O-13 | Locating the code ranks names and docstrings against the prompt. | A vague prompt can plan the wrong region; the plan shows it before any edit. | Use `--target` for an exact change. |
 
 ## Appendix A. Glossary

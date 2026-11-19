@@ -37,10 +37,10 @@ on:
         type: string
         default: "monorepo"
       signed:
-        description: "push through GitHub's API so that GitHub signs the commit (repositories that require signed commits)"
+        description: "for repositories that require signed commits: GitHub authors and signs the commit, the developer becomes Co-authored-by (default: a plain push, the developer is the author)"
         required: false
         type: boolean
-        default: true
+        default: false
 
 jobs:
   scaffold:

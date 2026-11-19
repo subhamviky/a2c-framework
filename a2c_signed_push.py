@@ -1,15 +1,17 @@
-"""Push a workflow's commit through GitHub's API so that GitHub signs it (A2C v1.5, AD-01).
+"""Push a workflow's commit so that GitHub signs it (A2C v1.5.4, AD-01) — opt-in.
 
-A commit made with `git commit` inside a workflow is unsigned, and a repository that requires
-signed commits refuses it. GitHub signs the commits it creates itself through its REST API for
-the workflow's token. This recreates the local commit there, unchanged in content, author and
-message (the trailers included), with the bot as committer, and points the branch at it.
+GitHub signs a commit only when its own bot authors it: a commit created through the API with
+another author is not signed (found on the first live run, v1.5.3). So a repository that requires
+signed commits gets the model GitHub's Copilot agent uses: GitHub's GraphQL `createCommitOnBranch`
+creates each commit, authored and signed by the workflow's bot, and the developer who started the
+run is named in a `Co-authored-by` trailer (with every other trailer kept). Without the
+requirement, the workflows use a plain `git push` instead: the developer is the author and the
+bot the committer, unsigned, which is the default (AD-01 D1).
 
-    python -m a2c_signed_push --branch aidlc-change/svc/chg-1234abcd [--base <sha>]
+    python -m a2c_signed_push --branch aidlc-change/svc/chg-1234abcd --base <sha>
 
 It reads GITHUB_REPOSITORY, GITHUB_API_URL and GITHUB_TOKEN (the aidlc workflows set them).
-The branch's commits since `--base` (default: the branch's merge base with origin/HEAD) are
-recreated in order, so a run's single commit, or a few, keep their history.
+The branch's commits since `--base` are recreated in order.
 """
 import argparse
 import base64
@@ -59,39 +61,40 @@ def _ok(status: int, answer: Dict[str, Any], what: str) -> Dict[str, Any]:
 
 
 def recreate(repo: Path, owner_repo: str, branch: str, base: str, http: Http) -> List[str]:
-    """Recreate base..branch on GitHub, one API commit per local commit. Returns the new SHAs."""
+    """Recreate base..branch on GitHub, signed by GitHub: one createCommitOnBranch per local commit,
+    the developer kept as Co-authored-by. Returns the new SHAs."""
     commits = [c for c in _git(repo, 'rev-list', '--reverse', f'{base}..{branch}').split() if c]
     if not commits:
         raise PushError(f'nothing to push: {branch} has no commits after {base}')
-    prefix = f'/repos/{owner_repo}/git'
-    parent, created = base, []
-    for sha in commits:
-        entries = []
-        for line in _git(repo, 'diff', '--no-renames', '--name-status', f'{sha}^', sha).splitlines():
-            status, path = line.split('\t', 1)
-            if status == 'D':
-                entries.append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': None})
-                continue
-            mode = _git(repo, 'ls-tree', sha, '--', path).split()[0]
-            content = subprocess.run(['git', '-C', str(repo), 'show', f'{sha}:{path}'], capture_output=True).stdout
-            blob = _ok(*http('POST', f'{prefix}/blobs', {'content': base64.b64encode(content).decode(),
-                                                          'encoding': 'base64'}), f'blob {path}')
-            entries.append({'path': path, 'mode': mode, 'type': 'blob', 'sha': blob['sha']})
-        base_tree = _ok(*http('GET', f'{prefix}/commits/{parent}', None), 'parent commit')['tree']['sha']
-        tree = _ok(*http('POST', f'{prefix}/trees', {'base_tree': base_tree, 'tree': entries}), 'tree')
-        name, email, date = _git(repo, 'log', '-1', '--format=%an%x00%ae%x00%aI', sha).strip().split('\x00')
-        message = _git(repo, 'log', '-1', '--format=%B', sha).rstrip('\n') + '\n'
-        # no committer and no signature: GitHub commits as the token's bot and signs it
-        commit = _ok(*http('POST', f'{prefix}/commits', {'message': message, 'tree': tree['sha'], 'parents': [parent],
-                                                          'author': {'name': name, 'email': email, 'date': date}}),
-                     'commit')
-        parent = commit['sha']
-        created.append(parent)
-    status, _ = http('GET', f'{prefix}/ref/heads/{branch}', None)
+    status, _ = http('GET', f'/repos/{owner_repo}/git/ref/heads/{branch}', None)
     if status == 200:
-        _ok(*http('PATCH', f'{prefix}/refs/heads/{branch}', {'sha': parent, 'force': False}), 'update branch')
-    else:
-        _ok(*http('POST', f'{prefix}/refs', {'ref': f'refs/heads/{branch}', 'sha': parent}), 'create branch')
+        raise PushError(f'branch {branch} already exists on GitHub')
+    _ok(*http('POST', f'/repos/{owner_repo}/git/refs', {'ref': f'refs/heads/{branch}', 'sha': base}), 'create branch')
+    head, created = base, []
+    for sha in commits:
+        additions, deletions = [], []
+        for line in _git(repo, 'diff', '--no-renames', '--name-status', f'{sha}^', sha).splitlines():
+            status_code, path = line.split('\t', 1)
+            if status_code == 'D':
+                deletions.append({'path': path})
+            else:
+                content = subprocess.run(['git', '-C', str(repo), 'show', f'{sha}:{path}'], capture_output=True).stdout
+                additions.append({'path': path, 'contents': base64.b64encode(content).decode()})
+        name, email = _git(repo, 'log', '-1', '--format=%an%x00%ae', sha).strip().split('\x00')
+        headline = _git(repo, 'log', '-1', '--format=%s', sha).strip()
+        body = _git(repo, 'log', '-1', '--format=%b', sha).rstrip('\n')
+        body = f'{body}\nCo-authored-by: {name} <{email}>' if body else f'Co-authored-by: {name} <{email}>'
+        query = ('mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) '
+                 '{ commit { oid } } }')
+        variables = {'input': {'branch': {'repositoryNameWithOwner': owner_repo, 'branchName': branch},
+                               'message': {'headline': headline, 'body': body},
+                               'fileChanges': {'additions': additions, 'deletions': deletions},
+                               'expectedHeadOid': head}}
+        answer = _ok(*http('POST', '/graphql', {'query': query, 'variables': variables}), 'commit')
+        if answer.get('errors'):
+            raise PushError(f"commit: {answer['errors'][0].get('message')}")
+        head = answer['data']['createCommitOnBranch']['commit']['oid']
+        created.append(head)
     return created
 
 

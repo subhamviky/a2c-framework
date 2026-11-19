@@ -53,7 +53,7 @@ on:
       llm: {description: "instead of a profile: replay:<file> plays recorded model answers committed in the repository (no model account; CI-only runs)", required: false, type: string, default: ""}
       provider_requirement: {description: "pip requirement for the profile's package", required: false, type: string, default: ""}
       allow_infra: {description: "allow Terraform, CI and container files", required: false, type: boolean, default: false}
-      signed: {description: "push through GitHub's API so that GitHub signs the commit", required: false, type: boolean, default: true}
+      signed: {description: "for repositories that require signed commits: GitHub authors and signs the commit, the developer becomes Co-authored-by (default: a plain push, the developer is the author)", required: false, type: boolean, default: false}
       gcp_workload_identity_provider: {description: "Google Cloud: the federation provider (no key); empty for other clouds", required: false, type: string, default: ""}
       gcp_service_account: {description: "Google Cloud: the service account the workflow impersonates", required: false, type: string, default: ""}
       gcp_project: {description: "Google Cloud: the project that runs the model", required: false, type: string, default: ""}
@@ -171,7 +171,10 @@ jobs:
             echo "Merge or rebase this pull request; a squash merge must keep the commit trailers."
             echo "Where the repository has a second reviewer, the requester should not be the only approver."
           } > "$RUNNER_TEMP/pr-body.md"
-          gh pr create --head "$BRANCH" --base "${{ github.event.repository.default_branch }}" --title "$SUBJECT" --body-file "$RUNNER_TEMP/pr-body.md"
+          if ! gh pr create --head "$BRANCH" --base "${{ github.event.repository.default_branch }}" --title "$SUBJECT" --body-file "$RUNNER_TEMP/pr-body.md"; then
+            echo "::error::The branch $BRANCH is pushed, but the pull request could not be opened. If GitHub says Actions may not create pull requests: Settings > Actions > General > Workflow permissions > Allow GitHub Actions to create and approve pull requests. Or open it yourself: gh pr create --head $BRANCH --fill"
+            exit 1
+          fi
 
       - name: Keep the model's answers and the run's log (audit)
         if: always()

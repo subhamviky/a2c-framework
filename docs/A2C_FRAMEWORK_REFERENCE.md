@@ -621,7 +621,7 @@ aidlc-build --upgrade <project> --commit
 - **`aidlc-change` edits only what a developer could edit**: hooks, functions, tests and new modules inside the confirmed plan. Never a method E2A owns, `.a2c/`, `.env*`, versions, dependencies or the changelog; Terraform, CI and Dockerfiles only with `--allow-infra`. A declaration change goes through the request and `aidlc-build --upgrade --commit`.
 - **Verification**: compile, E2A conformance (no new findings), secret scan, the critic's concurrency checks, the project's tests (green on the base commit first). Three attempts; then nothing is committed and `aidlc-change.patch` is left for the developer.
 - **Records**: `.a2c/changes/<change-id>.json` (prompt redacted for secrets, or only its hash), the next release's version, a `CHANGELOG.md` entry under *Unreleased*, `origins` in the manifest (a changed file is never replaced by `--upgrade`), and one audit event on the `a2c.audit` logger.
-- **Workflows**: `aidlc-scaffold.yml` and `aidlc-change.yml` push through GitHub's API (`a2c_signed_push`) so that GitHub signs the commit, and keep the run's log and the model's answers as an artifact.
+- **Workflows**: `aidlc-scaffold.yml` and `aidlc-change.yml` push with `git push` (the developer is the author, the bot the committer; unsigned) and keep the run's log and the model's answers as an artifact. `signed: true` (repositories that require signed commits): `a2c_signed_push` has GitHub's bot author and sign the commit, with the developer as `Co-authored-by`.
 
 **Project policy** (`.a2c/policy.json`, written by people):
 
