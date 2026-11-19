@@ -58,7 +58,8 @@ def new_repo(path, identity=True):
 def cli(argv, env=None):
     out, err = io.StringIO(), io.StringIO()
     saved = dict(os.environ)
-    os.environ.update(env or {})
+    os.environ.clear()                      # exactly this environment: a CI runner's GITHUB_* must not leak in
+    os.environ.update(env if env is not None else NO_CI)
     try:
         with redirect_stdout(out), redirect_stderr(err):
             rc = a2c_cli.main(argv)
@@ -69,7 +70,7 @@ def cli(argv, env=None):
 
 
 NO_CI = {k: v for k, v in os.environ.items() if not k.startswith('GITHUB_')}
-GH = {'GITHUB_ACTIONS': 'true', 'GITHUB_TRIGGERING_ACTOR': 'jdev', 'AIDLC_DEVELOPER_ID': '4242',
+GH = {**NO_CI, 'GITHUB_ACTIONS': 'true', 'GITHUB_TRIGGERING_ACTOR': 'jdev', 'AIDLC_DEVELOPER_ID': '4242',
       'GITHUB_REPOSITORY': 'acme/landscape', 'GITHUB_RUN_ID': '77', 'GITHUB_SERVER_URL': 'https://github.com'}
 
 with tempfile.TemporaryDirectory() as tmp:
