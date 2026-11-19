@@ -5,6 +5,7 @@
 Workflow only; no code change.
 
 ### Added
+- **`llm` input** (`replay:<file>`): run `aidlc-change` in CI with model answers recorded and committed in the repository, for landscapes with no model account at all. `provider_profile` is optional when `llm` is given.
 - **`aidlc-change.yml` signs in to Google Cloud through Workload Identity Federation** when `gcp_workload_identity_provider` and `gcp_service_account` are given (`google-github-actions/auth`, `id-token: write`), and sets `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION`. With the `google_vertex` profile the model is Gemini on Vertex AI in your project: no model-provider account and no stored key. The credentials file is excluded from the change (`.git/info/exclude`), so the clean-tree check still holds.
 
 ## v1.5.1 — aidlc-change for Java (hub design note AD-01, plan step 3)
