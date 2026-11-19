@@ -137,7 +137,7 @@ A2C makes NFRs, IaC and CI/CD mandatory generation targets. Each concern has its
 | ID | Invariant |
 |---|---|
 | INV-01 | No agent overrides `run()`; `SDLCWorkflow` does not override `execute()`. |
-| INV-02 | After `_apply_policy()`, `mandatory_nfrs` ⊇ `MANDATORY_NFRS`. |
+| INV-02 | After `_apply_policy()`, `mandatory_nfrs` contains every entry of `MANDATORY_NFRS`. |
 | INV-03 | A `target_cloud` outside `approved_clouds` (or an agent outside `approved_agents`) raises `GovernanceViolationError` before any model call. |
 | INV-04 | The workflow receives only state that passed `DevPlatformValidationService` and carries `tenant_id`. |
 | INV-05 | No A2C agent holds a semaphore, rate limiter or provider SDK. |
