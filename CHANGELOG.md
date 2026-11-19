@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.5.2 — aidlc-change through the cloud account (hub design note AD-01, plan step 4)
+
+Workflow only; no code change.
+
+### Added
+- **`aidlc-change.yml` signs in to Google Cloud through Workload Identity Federation** when `gcp_workload_identity_provider` and `gcp_service_account` are given (`google-github-actions/auth`, `id-token: write`), and sets `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION`. With the `google_vertex` profile the model is Gemini on Vertex AI in your project: no model-provider account and no stored key. The credentials file is excluded from the change (`.git/info/exclude`), so the clean-tree check still holds.
+
 ## v1.5.1 — aidlc-change for Java (hub design note AD-01, plan step 3)
 
 Requires E2A `v1.6.1` (e2a-java `1.6.1` for Java projects). Additive.

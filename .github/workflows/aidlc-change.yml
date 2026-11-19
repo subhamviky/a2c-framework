@@ -27,6 +27,16 @@ name: aidlc-change (reusable)
 #         provider_profile: anthropic_bedrock
 #         provider_requirement: "e2a-managed-providers @ git+https://github.com/subhamviky/e2a-managed-providers.git@main"
 #       secrets: inherit          # the model provider's credentials, as the profile reads them
+#
+# A profile that runs through the cloud account instead (google_vertex: Gemini on Vertex AI) needs
+# no provider key: pass the outputs of a Workload Identity Federation stack (for example
+# order-to-cash-agentic-ai/o2c-agent-service/infra/aidlc) and grant `id-token: write`:
+#         provider_profile: google_vertex
+#         provider_requirement: "e2a-managed-providers[google-vertex] @ git+https://github.com/subhamviky/e2a-managed-providers.git@main"
+#         gcp_workload_identity_provider: ${{ vars.AIDLC_GCP_WORKLOAD_IDENTITY_PROVIDER }}
+#         gcp_service_account: ${{ vars.AIDLC_GCP_SERVICE_ACCOUNT }}
+#         gcp_project: ${{ vars.AIDLC_GCP_PROJECT }}
+#         gcp_location: ${{ vars.AIDLC_GCP_LOCATION }}
 on:
   workflow_call:
     inputs:
@@ -39,6 +49,10 @@ on:
       provider_requirement: {description: "pip requirement for the profile's package", required: false, type: string, default: ""}
       allow_infra: {description: "allow Terraform, CI and container files", required: false, type: boolean, default: false}
       signed: {description: "push through GitHub's API so that GitHub signs the commit", required: false, type: boolean, default: true}
+      gcp_workload_identity_provider: {description: "Google Cloud: the federation provider (no key); empty for other clouds", required: false, type: string, default: ""}
+      gcp_service_account: {description: "Google Cloud: the service account the workflow impersonates", required: false, type: string, default: ""}
+      gcp_project: {description: "Google Cloud: the project that runs the model", required: false, type: string, default: ""}
+      gcp_location: {description: "Google Cloud: the Vertex AI location", required: false, type: string, default: "us-central1"}
 
 jobs:
   change:
@@ -46,8 +60,11 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      id-token: write             # Workload Identity Federation (Google Cloud), when configured
     env:
       PROJECT: ${{ inputs.project }}
+      GOOGLE_CLOUD_PROJECT: ${{ inputs.gcp_project }}
+      GOOGLE_CLOUD_LOCATION: ${{ inputs.gcp_location }}
       PROMPT: ${{ inputs.prompt }}
       TARGET: ${{ inputs.target }}
       KIND: ${{ inputs.kind }}
@@ -62,6 +79,16 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - name: Google Cloud credentials through federation (no key; the model runs in your project)
+        if: inputs.gcp_workload_identity_provider != ''
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ inputs.gcp_workload_identity_provider }}
+          service_account: ${{ inputs.gcp_service_account }}
+          project_id: ${{ inputs.gcp_project }}
+      - name: Keep the credentials file out of the change (it is written into the checkout)
+        if: inputs.gcp_workload_identity_provider != ''
+        run: echo 'gha-creds-*.json' >> .git/info/exclude
       - name: Set up Java (a Maven project is compiled and tested with the change)
         if: hashFiles(format('{0}/pom.xml', inputs.project)) != ''
         uses: actions/setup-java@v5
