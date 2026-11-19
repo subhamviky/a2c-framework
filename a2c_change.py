@@ -24,8 +24,9 @@ is left as aidlc-change.patch with aidlc-change-report.json for the developer.
 
 The model is bound through E2A: `profile:<name>` (e2a.bindings, any provider profile) or
 `replay:<file>` (recorded answers, for tests and for re-running a reviewed session offline).
-`--record <file>` saves a live session's answers for replay. Python projects in this release;
-Java follows in v1.5.1.
+`--record <file>` saves a live session's answers for replay. Python projects since v1.5.0;
+Java projects (Maven, e2a-java) since v1.5.1: members of a class are the regions, the methods
+e2a-java declares `final` are owned, and Maven compiles and tests the change.
 """
 import argparse
 import ast
@@ -41,6 +42,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
+import a2c_change_java as J
 from a2c_concurrency import run_coro_sync
 from a2c_provenance import (KINDS, ProvenanceError, abandon_run, file_hash, finish_run, redact, sha256,
                             start_run)
@@ -64,7 +66,7 @@ subject, e.g. "feat(order-agent): refuse orders above the credit limit"), "body"
 for the commit message), "changelog": str (one line for CHANGELOG.md, written for its readers), \
 "targets": [{"file": str, "region": str, "why": str}], "new_files": [str], "declaration_changes": [str]}.
 Rules: a region is "Class.method", "function", "Class" (to add a method to it) or "<module>" (to append to \
-the file). Never target a method marked framework-owned. List in declaration_changes anything that needs a \
+a Python file). In Java a region is "Type.method" or "Type" (nested types: "Outer.Inner.method"). Never target a method marked framework-owned. List in declaration_changes anything that needs a \
 new agent, tool, contract, setting or dependency: those are declared in the request, not edited."""
 
 EDIT_SYSTEM = """You are the A2C change implementer for an E2A service. Implement the approved plan. Answer \
@@ -74,6 +76,8 @@ with ONE JSON object and nothing else: {"edits": [{"op": "replace"|"add"|"create
 decorators and docstring.
 - add: "code" is one or more new methods (region "Class") or new top-level code (region "<module>").
 - create: a new file from the plan's new_files; "code" is the whole file.
+- In Java, "code" is the whole member: its Javadoc, annotations (@Override), signature and body; an \
+added method goes inside the type. Java has no "<module>" region.
 Write only inside the plan. Never define or override a framework-owned method. Keep the project's style; add \
 or update tests for the behaviour you change."""
 
@@ -105,6 +109,8 @@ def _framework_owned() -> Dict[str, Set[str]]:
 
 
 class CodeIndex:
+    lang = 'python'
+
     def __init__(self, project: Path) -> None:
         self.project = Path(project)
         self.regions: Dict[str, Region] = {}
@@ -196,6 +202,63 @@ class CodeIndex:
         return [r for _, _, r in scored[:limit]]
 
 
+class JavaIndex(CodeIndex):
+    """The same index for a Maven project on e2a-java (a2c_change_java)."""
+    lang = 'java'
+
+    def __init__(self, project: Path) -> None:
+        self.project = Path(project)
+        self.regions, self.files = {}, []
+        owned = J.e2a_java_owned(self.project)
+        self.owned_source = 'javap' if owned is not None else 'fallback'
+        self._owned = owned or {}
+        self._types: Dict[str, Tuple[str, Any]] = {}
+        self._build()
+
+    def _build(self) -> None:
+        for path in sorted(self.project.rglob('*.java')):
+            rel = path.relative_to(self.project)
+            if SKIP_DIRS & set(rel.parts):
+                continue
+            rel = rel.as_posix()
+            self.files.append(rel)
+            for t in J.parse(path.read_text(encoding='utf-8')):
+                self._types[t.name] = (rel, t)
+        for name, (rel, t) in self._types.items():
+            owned = self._owned_names(name)
+            self._add(Region(rel, name, 'class', t.start, t.end, bases=[t.extends] if t.extends else []))
+            for mem in t.members:
+                self._add(Region(rel, f'{name}.{mem.name}', 'method', mem.start, mem.end, owned=mem.name in owned))
+
+    def _owned_names(self, name: str, seen=None) -> Set[str]:
+        seen = seen or set()
+        if name in seen or name not in self._types:
+            return set()
+        seen.add(name)
+        base = self._types[name][1].extends
+        if not base:
+            return set()
+        if base in self._types:
+            return self._owned_names(base, seen)
+        if self.owned_source == 'javap':
+            return set(self._owned.get(base, set()))
+        return set(J.FALLBACK_OWNED) if base.startswith('Base') else set()
+
+    def class_owned(self, file: str, cls: str) -> Set[str]:
+        return self._owned_names(cls)
+
+
+def index_for(project: Path) -> CodeIndex:
+    project = Path(project)
+    if (project / 'pom.xml').is_file() and not (project / 'pyproject.toml').is_file():
+        return JavaIndex(project)
+    return CodeIndex(project)
+
+
+def is_java(project: Path) -> bool:
+    return (Path(project) / 'pom.xml').is_file() and not (Path(project) / 'pyproject.toml').is_file()
+
+
 def _first(node) -> int:
     return min([node.lineno] + [d.lineno for d in getattr(node, 'decorator_list', [])])
 
@@ -254,12 +317,17 @@ def check_edit(edit: Edit, plan: Dict[str, Any], index: CodeIndex, allow_infra: 
         return f'{edit.file}::{edit.region}: not in the plan'
     if not (index.project / edit.file).is_file():
         return f'{edit.file}: no such file'
-    if not edit.file.endswith('.py'):
-        return None                              # a non-Python file of the plan: whole-file regions only
-    try:
-        names = _defined_names(edit.code)
-    except SyntaxError as e:
-        return f'{edit.file}::{edit.region}: the code does not parse ({e.msg}, line {e.lineno})'
+    if edit.file.endswith('.java'):
+        if edit.region == '<module>':
+            return f'{edit.file}: Java has no module-level code; add to a class'
+        names = J.java_defined_names(edit.code)
+    elif not edit.file.endswith('.py'):
+        return None                              # another file of the plan: whole-file regions only
+    else:
+        try:
+            names = _defined_names(edit.code)
+        except SyntaxError as e:
+            return f'{edit.file}::{edit.region}: the code does not parse ({e.msg}, line {e.lineno})'
     cls = edit.region.split('.')[0] if edit.region not in ('<module>',) else ''
     region = index.regions.get(f'{edit.file}::{edit.region}')
     if edit.op == 'replace':
@@ -267,6 +335,9 @@ def check_edit(edit: Edit, plan: Dict[str, Any], index: CodeIndex, allow_infra: 
             return f'{edit.file}::{edit.region}: replace needs an existing method or function'
         if region.owned:
             return f'{edit.file}::{edit.region}: framework-owned; E2A runs it, the project only fills hooks'
+        if edit.file.endswith('.java') and J.locate((index.project / edit.file).read_text(encoding='utf-8'),
+                                                     edit.region) is None:
+            return f'{edit.file}::{edit.region}: overloaded or not found; replace one member at a time'
         if len(names) < 1 or names[0].split('.')[-1] != edit.region.split('.')[-1]:
             return f'{edit.file}::{edit.region}: the code must define {edit.region.split(".")[-1]}'
     if edit.op == 'add' and edit.region != '<module>':
@@ -297,6 +368,20 @@ def apply_edits(project: Path, edits: Sequence[Edit]) -> Dict[str, str]:
             continue
         text = path.read_text(encoding='utf-8')
         originals.setdefault(edit.file, text)
+        if edit.file.endswith('.java'):
+            found = J.locate(text, edit.region)
+            if found is None:
+                raise ChangeError(f'{edit.file}::{edit.region}: not found')
+            start, end, indent, is_type = found
+            lines = text.split('\n')
+            code = textwrap.dedent(edit.code).strip('\n')
+            if edit.op == 'replace':
+                lines[start - 1:end] = textwrap.indent(code, indent).split('\n')
+            else:                                # add to a type: before its closing brace
+                lines[end - 1:end - 1] = [''] + textwrap.indent(code, indent).split('\n')
+            new = '\n'.join(lines)
+            path.write_text(new if new.endswith('\n') else new + '\n', encoding='utf-8')
+            continue
         if not edit.file.endswith('.py'):        # a non-Python file of the plan: the whole file
             path.write_text(edit.code.rstrip('\n') + '\n', encoding='utf-8')
             continue
@@ -357,6 +442,10 @@ def diff(project: Path, originals: Dict[str, str], prefix: str = '') -> str:
 
 # ------------------------------------------------------------------ 4. verification
 def _conformance(project: Path) -> List[str]:
+    if is_java(project):                         # e2a-java: no class may define a method the base owns
+        index = JavaIndex(project)
+        return sorted(f'{r.file}: {r.name} overrides a final e2a-java method' for r in index.regions.values()
+                      if r.owned)
     from e2a.conformance import check_paths, failed
     src = project / 'src'
     roots = [str(src)] if src.is_dir() else [str(project)]
@@ -367,6 +456,8 @@ def _conformance(project: Path) -> List[str]:
 def _test_command(project: Path, given: Optional[str]) -> Optional[List[str]]:
     if given:
         return ['bash', '-c', given]
+    if is_java(project):
+        return ['mvn', '-B', '-q', 'verify'] if shutil.which('mvn') else None
     if not ((project / 'tests').is_dir() or list(project.glob('test_*.py'))):
         return None
     return [sys.executable, '-m', 'pytest', '-q', '-x', '-p', 'no:cacheprovider']
@@ -400,7 +491,14 @@ def verify(project: Path, changed: List[str], baseline_conformance: List[str],
                 compile(path.read_text(encoding='utf-8'), rel, 'exec')
             except SyntaxError as e:
                 compile_errors.append(f'{rel}:{e.lineno}: {e.msg}')
-    checks['compile'] = 'passed' if not compile_errors else compile_errors
+    java = is_java(project)
+    if java and not test_cmd and any(r.endswith('.java') for r in changed):
+        ok, out = run_tests(project, ['mvn', '-B', '-q', '-DskipTests', 'test-compile']
+                            if shutil.which('mvn') else None)
+        if ok is False:
+            compile_errors.append(out[-1500:])
+    checks['compile'] = ('passed' if not compile_errors else compile_errors) if not (java and test_cmd) \
+        else 'with the tests (Maven)'
     failures += [f'compile: {e}' for e in compile_errors]
     if not compile_errors:
         new = sorted(set(_conformance(project)) - set(baseline_conformance))
@@ -420,6 +518,9 @@ def verify(project: Path, changed: List[str], baseline_conformance: List[str],
         path = project / rel
         if rel.endswith('.py') and path.exists() and not compile_errors:
             concurrency += [f'{rel}: {f}' for f in critic.concurrency_findings(path.read_text(encoding='utf-8'))]
+        elif rel.endswith('.java') and path.exists():
+            text = path.read_text(encoding='utf-8')
+            concurrency += [f'{rel}: {msg}' for pattern, msg in J.JAVA_CRITIC if pattern.search(text)]
     checks['critic_concurrency'] = 'passed' if not concurrency else concurrency
     failures += [f'critic: {c}' for c in concurrency]
     if not failures:
@@ -564,7 +665,7 @@ def _sources(index: CodeIndex, plan: Dict[str, Any]) -> str:
         if path.is_file():
             text = path.read_text(encoding='utf-8')
             out.append(f'=== {rel}\n{text}')
-            if rel.endswith('.py'):
+            if rel.endswith(('.py', '.java')):
                 for cls in {t['region'].split('.')[0] for t in plan['targets'] if t['file'] == rel and t['region'] != '<module>'}:
                     owned = sorted(index.class_owned(rel, cls))
                     if owned:
@@ -577,8 +678,6 @@ def change(args: argparse.Namespace, out=print, ask=input) -> Dict[str, Any]:
     project = Path(args.project).resolve()
     if not project.is_dir():
         raise ChangeError(f'{project}: no such project')
-    if (project / 'pom.xml').is_file() and not (project / 'pyproject.toml').is_file():
-        raise ChangeError('Java projects are supported from A2C v1.5.1 (AD-01 plan step 3)')
     prompt = args.prompt or (Path(args.prompt_file).read_text(encoding='utf-8') if args.prompt_file else '')
     if not prompt.strip():
         raise ChangeError('no change request: pass --prompt or --prompt-file')
@@ -597,7 +696,7 @@ def change(args: argparse.Namespace, out=print, ask=input) -> Dict[str, Any]:
         if ok is False:
             raise ChangeError('the project\'s tests already fail on the base commit; fix them first:\n' + output)
     baseline = _conformance(project)
-    index = CodeIndex(project)
+    index = index_for(project)
     plan = make_plan(model, index, prompt, args.target, args.kind)
     run.kind = plan['kind']
     problems = check_plan(plan, index, args.allow_infra)

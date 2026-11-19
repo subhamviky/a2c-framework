@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "a2c-framework"
-version = "1.5.0"
+version = "1.5.1"
 description = "A2C, G2C and P0 - governed generation of classes, scaffolds, IaC and CI/CD (reference implementation)"
 readme = "README.md"
 license = "Apache-2.0"
@@ -30,6 +30,7 @@ Repository = "https://github.com/subhamviky/a2c-framework"
 py-modules = [
     "a2c_base",
     "a2c_change",
+    "a2c_change_java",
     "a2c_cli",
     "a2c_concurrency",
     "a2c_contracts",
