@@ -1,6 +1,6 @@
 # Design documents
 
-Detailed HLD and LLD documents for the frameworks in this repository. Each folder holds the document as Markdown, its diagrams (PNG images plus PlantUML and Graphviz sources) and a Word copy.
+Detailed HLD and LLD documents for the frameworks in this repository. Each folder holds the document as Markdown, its diagrams (PNG images plus PlantUML and Graphviz sources) and a PDF copy.
 
 | Folder | Framework | Read it for |
 |---|---|---|

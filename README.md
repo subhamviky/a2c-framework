@@ -239,7 +239,7 @@ result = workflow.generate({
 ```
 a2c-framework/
 ├── README.md · LICENSE
-├── docs/                          A2C, G2C, G2C phase-trigger and P0 reference documents (.md, with Word copies)
+├── docs/                          A2C, G2C, G2C phase-trigger and P0 reference documents (.md, with PDF copies)
 │   └── design/                    HLD and LLD design documents with diagrams (p0/, g2c/, a2c/)
 ├── a2c_base.py                    A2C — DevRequest, SDLCAssistantAgent and specialists,
 │                                  CodeCriticAgent, SDLCWorkflow, validation service, tools
