@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.5.4 — Workflow commits: what GitHub really signs (found on the first live run)
+
+### Changed
+- **The workflows push with plain `git push` by default** (`signed: false`): the developer is the author and `github-actions[bot]` the committer, as AD-01 D1 decided; the commit is unsigned. v1.5.3 recreated the commit through GitHub's REST API, believing GitHub would sign it: GitHub signs only commits its own bot authors, so the first live run produced an unsigned commit whose committer was the developer, not the bot.
+- **`signed: true`** (for repositories that require signed commits) now uses GraphQL `createCommitOnBranch`: GitHub's bot authors and signs the commit, and the developer is kept as `Co-authored-by`, with every other trailer. This is the model GitHub's Copilot agent uses.
+
+### Fixed
+- **Opening the pull request**: when GitHub refuses (Actions may not create pull requests in the repository's settings), the run says so and how to fix it, and names the pushed branch to open it by hand.
+
 ## v1.5.3 — Fix: the aidlc-change workflow could not name its branch
 
 ### Fixed

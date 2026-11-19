@@ -240,34 +240,29 @@ with tempfile.TemporaryDirectory() as tmp:
     check('the origins survive the upgrade',
           json.loads((up / 'svc/.a2c/manifest.json').read_text())['origins']['svc/agent.py']['origin'] == 'changed')
 
-    # ---------------------------------------------------------------- workflow commits signed by GitHub
+    # ---------------------------------------------------------------- opt-in: commits signed by GitHub
     import a2c_signed_push as SP
     calls = []
 
     def fake_github(method, path, body):
         calls.append((method, path, body))
-        if path.endswith('/blobs'):
-            return 201, {'sha': f'blob{len(calls)}'}
-        if '/git/commits/' in path:
-            return 200, {'tree': {'sha': 'basetree'}}
-        if path.endswith('/trees'):
-            return 201, {'sha': 'tree1'}
-        if path.endswith('/commits'):
-            return 201, {'sha': 'signed1'}
-        if '/ref/heads/' in path:
+        if '/git/ref/heads/' in path:
             return 404, {}
-        return 201, {}
+        if path.endswith('/git/refs'):
+            return 201, {}
+        if path == '/graphql':
+            return 200, {'data': {'createCommitOnBranch': {'commit': {'oid': 'signed1'}}}}
+        return 404, {}
     base = git(wrepo, 'rev-parse', 'HEAD~1')
     created = SP.recreate(wrepo, 'acme/landscape', 'aidlc/image-py-service', base, fake_github)
-    commit_body = next(b for m, p, b in calls if p.endswith('/git/commits'))
-    check('signed push: the commit is recreated through the API with the developer as author, no committer',
-          created == ['signed1'] and commit_body['author']['email'] == '4242+jdev@users.noreply.github.com'
-          and 'committer' not in commit_body and 'signature' not in commit_body)
-    check('signed push: the message keeps every trailer, and the branch is created',
-          'Assisted-by: a2c-framework/' in commit_body['message'] and 'AIDLC-Run:' in commit_body['message']
-          and calls[-1][1].endswith('/git/refs') and calls[-1][2]['sha'] == 'signed1')
-    check('signed push: every file of the commit is sent as a blob',
-          sum(1 for m, p, b in calls if p.endswith('/blobs')) == len(
-              git(wrepo, 'diff', '--name-only', base, 'HEAD').splitlines()))
+    mutation = next(b for m, p, b in calls if p == '/graphql')['variables']['input']
+    check('signed mode: GitHub creates and signs the commit (createCommitOnBranch) on a new branch at the base',
+          created == ['signed1'] and calls[1][2] == {'ref': 'refs/heads/aidlc/image-py-service', 'sha': base}
+          and mutation['expectedHeadOid'] == base)
+    check('signed mode: the developer is kept as Co-authored-by, with every trailer of the commit',
+          mutation['message']['body'].endswith('Co-authored-by: jdev <4242+jdev@users.noreply.github.com>')
+          and 'Assisted-by: a2c-framework/' in mutation['message']['body'] and 'AIDLC-Run:' in mutation['message']['body'])
+    check('signed mode: every file of the commit is sent',
+          len(mutation['fileChanges']['additions']) == len(git(wrepo, 'diff', '--name-only', base, 'HEAD').splitlines()))
 
 print(f'\n{passed} provenance checks passed')
