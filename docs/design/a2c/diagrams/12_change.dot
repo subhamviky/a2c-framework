@@ -1,0 +1,28 @@
+digraph change {
+  rankdir=TB; nodesep=0.3; ranksep=0.35;
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=10, fillcolor="#EEF3FA", color="#1F3864"];
+  edge [fontname="Helvetica", fontsize=9, color="#555555"];
+  label="aidlc-build --commit and aidlc-change (v1.5): every run ends as\na reviewed commit authored by the developer"; labelloc=t; fontname="Helvetica-Bold"; fontsize=12;
+
+  dev [label="Developer\n(prompt, CLI or\nworkflow dispatch)", shape=box, fillcolor="#FFF2CC", color="#BF9000"];
+  who [label="0. Identify\ndeveloper = author\n(git config / triggering actor)\nrefuse if unknown"];
+  subgraph cluster_new { label="New (exists today)"; style=dashed; color="#999999"; fontname="Helvetica"; fontsize=10;
+    build [label="aidlc-build\nP0 + G2C + A2C"]; }
+  subgraph cluster_chg { label="Change (new: aidlc-change)"; style=dashed; color="#999999"; fontname="Helvetica"; fontsize=10;
+    locate [label="1. Locate\nfiles, classes, hooks\n(manifest + code index)"];
+    plan [label="2. Plan\nedits, kind, version bump\ndeveloper confirms"];
+    edit [label="3. Edit\ndeveloper-owned hooks,\ntests, new files only"];
+    decl [label="Declaration change?\nupdate request,\nregenerate (C-02)"]; }
+  verify [label="4. Verify (bounded loop)\ncompile, conformance,\ntests, critic, release gate", fillcolor="#E2EFDA", color="#38761D"];
+  record [label="5. Record\nchange record, CHANGELOG,\nversion, manifest"];
+  commit [label="6. Commit on a branch\nAuthor: developer\nCommitter: developer or bot\nTrailers: Assisted-by, Change-Id\n(Signed-off-by only by the developer)", fillcolor="#E2EFDA", color="#38761D"];
+  pr [label="7. Pull request\nhuman review, CI,\nbranch protection", shape=box, fillcolor="#FFF2CC", color="#BF9000"];
+  stop [label="No commit:\npatch + report\nhanded to the developer", fillcolor="#F4CCCC", color="#990000"];
+
+  dev -> who; who -> build; who -> locate;
+  locate -> plan -> edit -> verify; plan -> decl [style=dashed]; decl -> edit [style=dashed];
+  build -> verify;
+  verify -> record [label="pass"]; verify -> stop [label="fails after N tries"];
+  verify -> edit [label="feedback", style=dashed, constraint=false];
+  record -> commit -> pr;
+}

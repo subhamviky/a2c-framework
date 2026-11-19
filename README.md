@@ -327,10 +327,44 @@ the package that provides it:
 
 The generated tests always bind `simulated`, so they run without a provider account.
 
+## Changing existing code, and a developer's trail for every run (v1.5)
+
+AI-DLC creates projects, and since v1.5 it also changes them. Every run, new or changed, ends the
+way a developer's own work does: a commit on a branch, **authored by the developer**, for a
+reviewed pull request (hub design note AD-01, checked against GitHub Copilot, GitLab Duo, Claude
+Code, Aider and the Linux kernel, Fedora and Apache policies).
+
+```bash
+aidlc-build --request request.json --output . --commit
+```
+
+```bash
+aidlc-change --project orders --prompt "Refuse orders above the customer's credit limit" --llm profile:anthropic_bedrock --signoff --pr
+```
+
+- **The developer is the author**: the checkout's git identity, or in a workflow the person who
+  started the run (the bot is only the committer). A run nobody can be identified for is refused.
+- **The tool is disclosed, not credited as a person**: `Assisted-by: a2c-framework/<version>:<model>`,
+  with `Change-Id`, `Prompt-Sha256` and, in a workflow, `AIDLC-Run`. `Signed-off-by` only when the
+  developer passes `--signoff`: the tool never signs off on anyone's behalf.
+- **`aidlc-change`** plans the change, shows the plan, edits only what a developer could edit by hand
+  (never a method E2A owns, never `.a2c/`, versions or dependencies; Terraform, CI and Dockerfiles
+  only with `--allow-infra`), then verifies: compile, E2A conformance, secret scan, the critic's
+  concurrency checks and the project's tests, with up to three attempts. If it still fails, nothing
+  is committed: the last attempt is left in `aidlc-change.patch`.
+- **As a developer would by hand**: the version moves for the next release (semantic versioning),
+  `CHANGELOG.md` gets an entry under *Unreleased*, tags stay manual. `.a2c/changes/<id>.json`
+  records the prompt (secrets redacted), the plan, the model, file hashes and the checks; one audit
+  event per run goes to the `a2c.audit` logger.
+- **Workflows**: `aidlc-scaffold.yml` and the new `aidlc-change.yml` commit as the developer, push
+  through GitHub's API so the commit is signed, and keep the run's log and the model's answers.
+- Python projects in v1.5.0; Java follows in v1.5.1.
+
 ## Compatibility
 
 | a2c-framework | e2a-framework | capability-oriented-dsa (used by generated services) |
 |---|---|---|
+| `v1.5.0` | `v1.6.1` (and e2a-java `1.6.1` for Java) | `v0.2.x`, `v0.3.x` |
 | `v1.4.0` | `v1.6.1` (and e2a-java `1.6.1` for Java) | `v0.2.x`, `v0.3.x` |
 | `v1.3.0` | `v1.3.0` (and e2a-java `1.3.0` for Java) | `v0.2.x`, `v0.3.x` |
 | `v1.2.2` | `v1.2.2` | `v0.2.x`, `v0.3.x` |

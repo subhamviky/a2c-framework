@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.5.0 — Changing existing code, and a developer's trail for every run (hub design note AD-01)
+
+Requires E2A `v1.6.1`. Additive: `aidlc-build` without `--commit` behaves as before.
+
+### Added
+- **`aidlc-change`** (`a2c_change.py`): changes an existing Python E2A service from a prompt or a command.
+  - Locates the code: an index of classes and methods, with the methods E2A owns taken from E2A's own conformance data; `--target path::Class.method` makes it exact.
+  - Plans with the model, shows the plan, and waits for the developer (`--yes` in the workflow). A declaration change (a new agent, tool, contract, setting or dependency) is refused with the way to declare it: in the request, then `aidlc-build --upgrade --commit`.
+  - Edits only inside the plan and only what a developer could edit: never a framework-owned method, `.a2c/`, `.env`, versions, dependencies or the changelog; Terraform, CI and Dockerfiles only with `--allow-infra`.
+  - Verifies: compile, E2A conformance (no new findings), secret scan, the critic's concurrency checks, the project's tests (which must already pass on the base commit). Failures go back to the model, up to three attempts. Then nothing is committed: the files are restored, and `aidlc-change.patch` and `aidlc-change-report.json` are left for the developer.
+  - The model is bound through E2A: `--llm profile:<name>` (any provider profile) or `replay:<file>` (recorded answers); `--record` saves a session's answers.
+  - The same change on the same commit reuses its branch.
+- **Provenance for every run** (`a2c_provenance.py`), for `aidlc-build --commit`, `aidlc-build --upgrade --commit` and `aidlc-change`:
+  - **Author = the developer**: the checkout's git identity (`--author` may only restate it), or in a workflow the person who started the run, with the bot as committer. No developer, or a bot: refused.
+  - **Trailers**: `Change-Id`, `Assisted-by: a2c-framework/<version>:<model>` (the Linux kernel's and Fedora's format), `AIDLC-Run` in a workflow, `Prompt-Sha256`; `Signed-off-by` only with `--signoff`; `Co-authored-by` for the tool only if the project's `.a2c/policy.json` asks for it.
+  - **Branches**: `aidlc/<project>` (new), `aidlc-upgrade/<project>/<id>`, `aidlc-change/<project>/<id>`. A clean working tree is required.
+  - **Change record** `.a2c/changes/<id>.json`: developer, base commit, prompt (secrets redacted, or only its hash with `prompt_storage: hash`), plan, tool and model, file hashes before and after, checks.
+  - **Version and changelog**: the version of the next release, from the kind of change (a project never released keeps its version); a Keep a Changelog entry under *Unreleased*. Tags stay manual.
+  - **Manifest origins**: `.a2c/manifest.json` records which files were generated and which changed; `--upgrade` never replaces a changed file.
+  - **Audit event**: one JSON line per run on the `a2c.audit` logger and stderr (`AIDLC-AUDIT`), with actor, `actor_is_agent`, `initiated_by`, change id, model, outcome.
+- **`a2c_signed_push`**: recreates a workflow's commit through GitHub's API (author, message and trailers unchanged, no committer given) so that GitHub signs it.
+- **Workflow `aidlc-change.yml`** (reusable), and `aidlc-scaffold.yml` now commits as the developer, pushes signed (`signed: false` to opt out) and keeps the run's log as an artifact.
+- **Tests**: `smoke_test_provenance.py` (47 checks) and `smoke_test_change.py` (30 checks), in CI.
+
+### Not changed
+- Java projects: `aidlc-change` refuses them, naming v1.5.1. Provenance (`--commit`) already covers Java builds.
+- The signing of workflow commits by GitHub's API is tested against a fake API; it is confirmed on the first live run.
+
 ## v1.4.0 — Generated services bind their model from a profile (hub design note MP-03, P27)
 
 Requires E2A `v1.6.1` (and, for Java, e2a-java `1.6.1`, installed from E2A's tag).

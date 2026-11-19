@@ -96,6 +96,7 @@ def upgrade(project_dir: Path, build: Callable[[Dict[str, Any], Path], Dict[str,
     if request.get('context', {}).get('project_name') != project:
         raise UpgradeError(f"the request builds {request.get('context', {}).get('project_name')!r}, not {project!r}")
     old = manifest['files'] if manifest else generated_files(Path(baseline), project)
+    origins = (manifest or {}).get('origins', {})      # v1.5 (AD-01): files aidlc-change changed are yours
 
     report = {'from': (manifest or {}).get('version', 'baseline'), 'to': a2c_version(), 'replaced': [],
               'added': [], 'unchanged': [], 'yours': [], 'kept_deleted': [], 'no_longer_generated': []}
@@ -121,7 +122,8 @@ def upgrade(project_dir: Path, build: Callable[[Dict[str, Any], Path], Dict[str,
                 report['unchanged'].append(rel)
             elif old_hash == new_hash:
                 report['unchanged'].append(rel)                  # the generator's output did not change: yours stays
-            elif old_hash is not None and current_hash == old_hash:
+            elif (old_hash is not None and current_hash == old_hash
+                  and origins.get(rel, {}).get('origin') != 'changed'):
                 current.write_bytes(fresh.read_bytes())          # untouched by you: replaced
                 report['replaced'].append(rel)
             else:                                                # changed by you: a patch to review
@@ -144,13 +146,15 @@ def upgrade(project_dir: Path, build: Callable[[Dict[str, Any], Path], Dict[str,
             report['patch'] = str(patch)
         elif patch.exists():
             patch.unlink()
-        write_manifest_from(project_dir, request, new)
+        write_manifest_from(project_dir, request, new, origins)
     return report
 
 
-def write_manifest_from(project_dir: Path, request: Dict[str, Any], files: Dict[str, str]) -> None:
+def write_manifest_from(project_dir: Path, request: Dict[str, Any], files: Dict[str, str],
+                        origins: Optional[Dict[str, Any]] = None) -> None:
     path = Path(project_dir) / MANIFEST
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({'generator': 'a2c-framework', 'version': a2c_version(),
-                                'request': clean_request(request), 'files': files}, indent=2, sort_keys=True) + '\n',
-                    encoding='utf-8')
+    data = {'generator': 'a2c-framework', 'version': a2c_version(), 'request': clean_request(request), 'files': files}
+    if origins:
+        data['origins'] = origins                   # v1.5 (AD-01): kept across upgrades
+    path.write_text(json.dumps(data, indent=2, sort_keys=True) + '\n', encoding='utf-8')
