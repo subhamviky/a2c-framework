@@ -34,6 +34,8 @@ jobs:
         run: |
           python -I -c "from a2c_assets import read_template; assert 'aws_sqs_queue' in read_template('terraform/aws.tf'); import a2c_cli, a2c_template_llm; print('package OK')"
           aidlc-build --help | head -1
+          aidlc-change --help | head -1
+          python -I -c "import a2c_provenance, a2c_change, a2c_signed_push; print('AD-01 modules OK')"
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -48,7 +50,7 @@ jobs:
         env:
           E2A_REFERENCE_PATH: ${{ github.workspace }}/e2a-framework/reference
         run: |
-          for t in smoke_test_generator_concurrency smoke_test_g2c_contract smoke_test_a2c smoke_test_aidlc_integration smoke_test_template_mode smoke_test_declarations smoke_test_g2c_v12 smoke_test_evaluation smoke_test_java12 smoke_test_profile_binding; do
+          for t in smoke_test_generator_concurrency smoke_test_g2c_contract smoke_test_a2c smoke_test_aidlc_integration smoke_test_template_mode smoke_test_declarations smoke_test_g2c_v12 smoke_test_evaluation smoke_test_java12 smoke_test_profile_binding smoke_test_provenance smoke_test_change; do
             echo "== $t"
             rc=0; python -W always "$t.py" > "$RUNNER_TEMP/$t.log" 2>&1 || rc=$?   # keep going: the log is shown below
             tail -1 "$RUNNER_TEMP/$t.log"

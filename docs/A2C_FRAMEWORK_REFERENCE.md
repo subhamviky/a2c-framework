@@ -600,6 +600,37 @@ Phase C (`aidlc-build`) uses E2A's secret patterns. For a v1.2 project it also r
 
 Design: wave C note C-04 (o2c-platform-hub).
 
+## 11. Changing Existing Code, and the Developer's Trail (v1.5)
+
+```bash
+aidlc-change --project <service> --prompt "<the change>" [--target path::Class.method] [--kind feature|fix|refactor|breaking] --llm profile:<E2A profile> [--signoff] [--pr] [--allow-infra]
+```
+
+```bash
+aidlc-build --request <file> --output . --commit [--signoff]
+```
+
+```bash
+aidlc-build --upgrade <project> --commit
+```
+
+**Contract.**
+- **The developer is the author** of every commit a run makes: the checkout's git identity, or in a workflow the person who started it, with the bot as committer. No identifiable developer: refused before anything is written.
+- **Trailers**: `Change-Id`, `Assisted-by: a2c-framework/<version>:<model>`, `Prompt-Sha256`, and `AIDLC-Run` in a workflow. `Signed-off-by` only with `--signoff`; `Co-authored-by` for the tool only if `.a2c/policy.json` asks for it.
+- **Branches**: `aidlc/<project>`, `aidlc-upgrade/<project>/<change-id>`, `aidlc-change/<project>/<change-id>`. A clean working tree is required; the main branch is never written; the tool never merges.
+- **`aidlc-change` edits only what a developer could edit**: hooks, functions, tests and new modules inside the confirmed plan. Never a method E2A owns, `.a2c/`, `.env*`, versions, dependencies or the changelog; Terraform, CI and Dockerfiles only with `--allow-infra`. A declaration change goes through the request and `aidlc-build --upgrade --commit`.
+- **Verification**: compile, E2A conformance (no new findings), secret scan, the critic's concurrency checks, the project's tests (green on the base commit first). Three attempts; then nothing is committed and `aidlc-change.patch` is left for the developer.
+- **Records**: `.a2c/changes/<change-id>.json` (prompt redacted for secrets, or only its hash), the next release's version, a `CHANGELOG.md` entry under *Unreleased*, `origins` in the manifest (a changed file is never replaced by `--upgrade`), and one audit event on the `a2c.audit` logger.
+- **Workflows**: `aidlc-scaffold.yml` and `aidlc-change.yml` push through GitHub's API (`a2c_signed_push`) so that GitHub signs the commit, and keep the run's log and the model's answers as an artifact.
+
+**Project policy** (`.a2c/policy.json`, written by people):
+
+```json
+{"prompt_storage": "text", "attribution": {"co_author": false, "co_author_identity": ""}}
+```
+
+Python projects in v1.5.0; Java in v1.5.1. Design: hub note AD-01 (o2c-platform-hub); A2C design document Sections 5.9 and 8.9.
+
 ## Related Documents and Diagrams
 
 The full high- and low-level design of A2C is in [`design/a2c/`](design/a2c/A2C_FRAMEWORK_DESIGN.md), with every diagram as PNG plus PlantUML or Graphviz source. This reference remains the contract; the design document explains how it fits together.

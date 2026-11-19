@@ -33,7 +33,8 @@ import g2c_v12
 E2A_REF = 'v1.6.1'          # the E2A version this A2C release generates for (its own pin)
 from a2c_contracts import contracts_from
 from a2c_layout import LAYOUTS, move_workflows
-from a2c_upgrade import UpgradeError, clean_request, upgrade, write_manifest
+from a2c_upgrade import UpgradeError, clean_request, generated_files, upgrade, write_manifest
+from a2c_provenance import ProvenanceError, abandon_run, file_hash, finish_run, start_run
 from a2c_settings import normalize as normalize_settings, terraform as settings_terraform
 from a2c_template_llm import SETTINGS_PLACEHOLDERS, build_template_llm, code_artifact_paths
 from ai_dlc_pipeline import AIDLCPipelineOrchestrator, AIDLCStaticPipeline
@@ -293,8 +294,16 @@ def main(argv=None) -> int:
     parser.add_argument('--run-tests', action='store_true', help='run the generated tests in Phase C')
     parser.add_argument('--repository-layout', choices=LAYOUTS,
                         help='monorepo: move the generated workflows to the repository root, scoped to the service')
+    parser.add_argument('--commit', action='store_true',
+                        help='v1.5 (AD-01): commit the result on a new branch, authored by you, with the '
+                             'Assisted-by trailer and a change record (needs a clean git working tree)')
+    parser.add_argument('--author', help='with --commit, locally: "Name <email>"; the email must be your git identity')
+    parser.add_argument('--signoff', action='store_true',
+                        help='with --commit: add your Signed-off-by (the tool never adds it on its own)')
     parser.add_argument('--verbose', action='store_true')
     args = parser.parse_args(argv)
+    if (args.author or args.signoff) and not args.commit:
+        parser.error('--author and --signoff go with --commit')
     logging.basicConfig(level=logging.INFO if args.verbose else logging.ERROR, force=True)
     if not args.verbose:
         logging.disable(logging.WARNING)
@@ -306,15 +315,64 @@ def main(argv=None) -> int:
     request['_request_dir'] = str(Path(args.request).resolve().parent)
     if args.repository_layout:
         request.setdefault('context', {})['repository_layout'] = args.repository_layout
+    run = None
+    if args.commit:
+        try:
+            run = _start_create(request, Path(args.output), args.author)
+        except ProvenanceError as error:
+            print(json.dumps({'success': False, 'errors': [str(error)]}, indent=2))
+            return 1
     try:
         report = build(request, Path(args.output), args.run_tests)
     except ValueError as error:                       # a declaration that cannot be generated
+        if run:
+            abandon_run(run, model='template', outcome='refused', reason=str(error), stream=_stderr)
         print(json.dumps({'success': False, 'errors': [str(error)]}, indent=2))
         return 1
+    if run:
+        report['provenance'] = _finish_create(run, request, Path(args.output), report, args.signoff)
     print(json.dumps({k: report[k] for k in ('success', 'phase_reached', 'project_root', 'critic_score',
-                                             'findings', 'errors', 'llm_usage', 'root_workflows') if k in report},
-                     indent=2, default=str))
+                                             'findings', 'errors', 'llm_usage', 'root_workflows', 'provenance')
+                      if k in report}, indent=2, default=str))
     return 0 if report['success'] else 1
+
+
+def _stderr(line: str) -> None:
+    print(line, file=sys.stderr)
+
+
+def _start_create(request, output: Path, author):
+    """AD-01: a new scaffold is committed like a developer's first commit of it."""
+    project = request.get('context', {}).get('project_name')
+    if not project:
+        raise ProvenanceError('the request has no context.project_name')
+    target = Path(output).resolve() / project
+    if target.exists():
+        raise ProvenanceError(f'{target} already exists: use --upgrade for an existing project')
+    run = start_run(target, kind='create', branch=f'aidlc/{project}', author=author,
+                    change_parts=[project, json.dumps(clean_request(request), sort_keys=True, default=str)])
+    run.git.switch_new(run.branch)
+    return run
+
+
+def _finish_create(run, request, output: Path, report, signoff: bool):
+    project = run.project_dir.name
+    if not report.get('success'):
+        abandon_run(run, model='template', outcome='failed verification',
+                    reason='; '.join(map(str, report.get('errors') or report.get('findings') or [])), stream=_stderr)
+        return {'committed': False, 'reason': 'the build did not pass; nothing was committed'}
+    files = [run.rel(Path(output).resolve() / rel) for rel in generated_files(Path(output), project)]
+    extra = [run.rel(run.project_dir)] + [run.rel(Path(p)) for p in report.get('root_workflows') or []]
+    prompt = (request.get('prompt') or {}).get('user_prompt', '')
+    return finish_run(
+        run, subject=f'feat({project}): scaffold {project} with AI-DLC',
+        body=f'Generated by aidlc-build (P0, G2C and A2C) from the request for {project}; '
+             f"phase reached {report.get('phase_reached')}, critic score {report.get('critic_score')}.",
+        model='template', files=files, extra_paths=extra, origin='generated', prompt=prompt or None,
+        plan={'request': clean_request(request)},
+        verification={'phase_reached': report.get('phase_reached'), 'critic_score': report.get('critic_score'),
+                      'pipeline_stages': report.get('pipeline_stages'), 'findings': report.get('findings')},
+        signoff=signoff, stream=_stderr)
 
 
 def _upgrade(args) -> int:
@@ -327,11 +385,38 @@ def _upgrade(args) -> int:
         req['_request_dir'] = str(project.parent)          # contracts resolve from the repository root
         return build(req, output)
 
+    run, before = None, {}
+    if args.commit:
+        try:
+            from a2c_provenance import a2c_version
+            run = start_run(project, kind='upgrade', branch=f'aidlc-upgrade/{project.name}/{{change}}',
+                            author=args.author, change_parts=[project.name, a2c_version()])
+            manifest = project / '.a2c' / 'manifest.json'
+            if manifest.is_file():
+                before = {run.rel(project.parent / rel): file_hash(project.parent / rel)
+                          for rel in json.loads(manifest.read_text(encoding='utf-8')).get('files', {})}
+            run.git.switch_new(run.branch)
+        except ProvenanceError as error:
+            print(json.dumps({'success': False, 'error': str(error)}, indent=2))
+            return 1
     try:
         report = upgrade(project, rebuild, request, Path(args.baseline).resolve() if args.baseline else None)
     except UpgradeError as error:
+        if run:
+            abandon_run(run, model='template', outcome='refused', reason=str(error), stream=_stderr)
         print(json.dumps({'success': False, 'error': str(error)}, indent=2))
         return 1
+    if run:
+        changed = [run.rel(project.parent / rel) for rel in report['replaced'] + report['added']]
+        report['provenance'] = finish_run(
+            run, subject=f"chore({project.name}): upgrade the scaffold to a2c-framework {report['to']}",
+            body=(f"aidlc-build --upgrade from {report['from']} to {report['to']}: {len(report['replaced'])} files "
+                  f"replaced, {len(report['added'])} added; {len(report['yours'])} of your files have a patch to "
+                  'review (a2c-upgrade.patch, not committed).'),
+            model='template', files=changed, before=before, origin='generated',
+            changelog_line=f"Scaffold upgraded to a2c-framework {report['to']} (from {report['from']}).",
+            plan={'yours': report['yours'], 'no_longer_generated': report['no_longer_generated']},
+            signoff=args.signoff, stream=_stderr)
     print(json.dumps({'success': True, **{k: v for k, v in report.items() if k != 'unchanged'},
                       'unchanged': len(report['unchanged'])}, indent=2))
     return 0

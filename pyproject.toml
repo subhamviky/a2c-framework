@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "a2c-framework"
-version = "1.4.0"
+version = "1.5.0"
 description = "A2C, G2C and P0 - governed generation of classes, scaffolds, IaC and CI/CD (reference implementation)"
 readme = "README.md"
 license = "Apache-2.0"
@@ -19,6 +19,7 @@ api = ["fastapi>=0.111", "httpx>=0.27"]
 
 [project.scripts]
 aidlc-build = "a2c_cli:main"
+aidlc-change = "a2c_change:main"
 
 [project.urls]
 Repository = "https://github.com/subhamviky/a2c-framework"
@@ -28,12 +29,15 @@ Repository = "https://github.com/subhamviky/a2c-framework"
 # (prompts, templates) ship in the a2c_assets package.
 py-modules = [
     "a2c_base",
+    "a2c_change",
     "a2c_cli",
     "a2c_concurrency",
     "a2c_contracts",
     "a2c_evaluation",
     "a2c_layout",
+    "a2c_provenance",
     "a2c_settings",
+    "a2c_signed_push",
     "a2c_upgrade",
     "a2c_abstract_class_generator",
     "a2c_inherited_class_generator",

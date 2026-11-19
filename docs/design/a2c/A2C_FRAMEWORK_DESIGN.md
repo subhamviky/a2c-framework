@@ -2,16 +2,16 @@
 
 ### High-Level and Low-Level Design
 
-*This document describes A2C, the framework that uses E2A-governed agents to generate the NFR and observability modules, infrastructure-as-code and CI/CD pipelines of a service, with mandatory NFRs injected before any model call, and that turns what a request declares (app settings, contracts, dependencies, repository layout) into those artifacts and keeps a scaffold upgradable. It covers the problem, use cases, HLD, the DevRequest contract, the agent, workflow, validation, artifact and tool contracts, the NFR-first generation order, the two-phase invocation with G2C and P0, the v1.2 declarations and upgrades, and the concurrency rules, so that a reader can form a complete mental model of A2C without opening the Python source.*
+*This document describes A2C, the framework that uses E2A-governed agents to generate the NFR and observability modules, infrastructure-as-code and CI/CD pipelines of a service, with mandatory NFRs injected before any model call, and that turns what a request declares (app settings, contracts, dependencies, repository layout) into those artifacts and keeps a scaffold upgradable. It covers the problem, use cases, HLD, the DevRequest contract, the agent, workflow, validation, artifact and tool contracts, the NFR-first generation order, the two-phase invocation with G2C and P0, the v1.2 declarations and upgrades, the v1.5 change mode (`aidlc-change`) and the developer's trail that every run leaves, and the concurrency rules, so that a reader can form a complete mental model of A2C without opening the Python source.*
 
 | | |
 |---|---|
 | Framework | A2C — Architecture-to-Code (developer-platform framework built on E2A) |
 | Document type | Design Document (HLD + LLD) |
 | Author | Subham Gupta, Principal Platform Architect |
-| Source baseline | `subhamviky/a2c-framework` `v1.2.1` — `a2c_base.py` (670 lines), `a2c_settings.py`, `a2c_contracts.py`, `a2c_layout.py`, `a2c_upgrade.py`, `a2c_cli.py`; on `subhamviky/e2a-framework` `v1.2.0` (the `e2a` package; `e2a_base` is its compatibility module) |
-| Date | 13 November 2026 (v1.2.1; v1.2.0 the same day; baseline 7 November 2026) |
-| Status | Aligned to A2C v1.2.1 and its smoke tests (wave C, design notes C-01, C-02 and C-04; wave D note D-01) |
+| Source baseline | `subhamviky/a2c-framework` `v1.5.0` — `a2c_base.py`, `a2c_settings.py`, `a2c_contracts.py`, `a2c_layout.py`, `a2c_upgrade.py`, `a2c_cli.py`, and since v1.5 `a2c_provenance.py`, `a2c_change.py`, `a2c_signed_push.py`; on `subhamviky/e2a-framework` `v1.6.1` (the `e2a` package) |
+| Date | 19 November 2026 (v1.5.0, Sections 5.9 and 8.9; v1.2.1 on 13 November 2026; baseline 7 November 2026) |
+| Status | Aligned to A2C v1.5.0 and its smoke tests (wave C notes C-01, C-02 and C-04; wave D note D-01; hub note AD-01 for v1.5) |
 
 ## 1. Introduction
 
@@ -32,7 +32,7 @@ The design principle is that architecture is a constraint, not a prompt. `SDLCAs
 
 ### 1.3 Status
 
-All A2C classes are **implemented** in `a2c_base.py` on top of E2A (installed as the `e2a-framework` package, pinned to `v1.2.0`; `a2c_base.py` imports through E2A's `e2a_base` compatibility module). The v1.2 declarations live in four modules beside it (Section 8.8). A2C's own agents still use E2A's v1.1 hook signatures, which E2A v1.2 runs unchanged with one `DeprecationWarning` per class (observation O-8). Two contracts are worth naming:
+All A2C classes are **implemented** in `a2c_base.py` on top of E2A (installed as the `e2a-framework` package, pinned to `v1.6.1`). The v1.2 declarations live in four modules beside it (Section 8.8), and the v1.5 change mode and provenance in three more (Section 8.9). A2C's own agents moved to E2A's v1.2 hook contract in A2C v1.2.2 (observation O-8). Two contracts are worth naming:
 
 **Table 1 — Contract provenance**
 
@@ -50,6 +50,7 @@ All A2C classes are **implemented** in `a2c_base.py` on top of E2A (installed as
 | P0 Framework Design Document | Produces `dev_request` (with `tenant_id`, `project_root`); composed with A2C by `BootstrapAndGenerateWorkflow`. |
 | G2C Framework Design Document | Generates `a2c_base.py` (template mode emits this file) and team `SDLCAssistantAgent` subclasses; since v1.2 also the service's E2A v1.2 agents, workflow and governance, which is where business logic lives now. |
 | E2A AI-DLC Profile Design Document | Runs `SDLCWorkflow` as Phase B. |
+| Hub design note AD-01 | Change mode and developer provenance (v1.5): the industry survey, the decisions D1 to D9 and the plan that Sections 5.9 and 8.9 implement. |
 
 ## 2. Problem Statement and Motivation
 
@@ -241,15 +242,80 @@ Design note C-04 (D-2). A Python service on E2A v1.2 is judged by E2A's release 
 
 It does not score the cases, because the domain code behind them is written after the build. A Java service or an E2A v1.1 service with `evaluation` is refused: the gate is a Python E2A v1.2 class.
 
+### 5.9 Changing existing code, and the developer's trail (v1.5)
+
+![Figure 7 — Every run, new or changed, ends as a reviewed commit authored by the developer](images/12_change.png)
+
+*Figure 7 — Every run, new or changed, ends as a reviewed commit authored by the developer*
+
+Hub design note AD-01. Before v1.5, AI-DLC only created: nothing changed code that already existed, and generated work had no developer in its history (`aidlc-build` committed nothing; the scaffold workflow committed as `github-actions[bot]`). v1.5 adds a change command, `aidlc-change`, and one provenance model for every run: `aidlc-build --commit`, `aidlc-build --upgrade --commit` and `aidlc-change`. The model follows what GitHub Copilot, GitLab Duo, Claude Code, Aider and the Linux kernel, Fedora and Apache policies do: a person is accountable, the tool is disclosed in a commit trailer, the legal sign-off is human, versioning is unchanged, and review is the gate.
+
+**Table 6 — Who is recorded, and how**
+
+| Where it runs | Author | Committer | Refused when |
+|---|---|---|---|
+| Locally (CLI, terminal) | The checkout's git identity; `--author` may only restate it with another display name | The same developer | No `user.name` or `user.email`; an `--author` with another email |
+| GitHub workflow | The person who started the run (`github.triggering_actor`), with their no-reply address | `github-actions[bot]` | No login or user id; a login ending in `[bot]`; any `--author` |
+
+**Table 7 — The commit**
+
+| Element | Rule |
+|---|---|
+| Branch | `aidlc/<project>` (new), `aidlc-upgrade/<project>/<change-id>`, `aidlc-change/<project>/<change-id>`; never the main branch; a clean working tree first |
+| Subject and body | The repository's convention; for a change, drafted in the plan the developer confirms |
+| `Change-Id` | `chg-` and 8 hex digits: a hash of project, request or prompt, and base commit. The same change on the same commit reuses its branch |
+| `Assisted-by` | `a2c-framework/<version>:<model>` (`template` for template mode, the profile's model or `replay` for a change). Only on commits whose content the tool produced |
+| `AIDLC-Run` | In a workflow: the run whose artifact holds the log and the model's answers |
+| `Prompt-Sha256` | The exact prompt, also kept (redacted) in the change record |
+| `Co-authored-by` | Off; on only if the project's `.a2c/policy.json` names the tool's identity |
+| `Signed-off-by` | Only with `--signoff`. The tool never adds it on its own: only a person can certify the DCO |
+| Signing | Locally, as the developer's git is configured; in a workflow, `a2c_signed_push` recreates the commit through GitHub's API (author, message and trailers unchanged, no committer given), so GitHub signs it |
+
+**`aidlc-change`, step by step.** (1) Locate: an index of the project's classes and methods; the methods E2A owns come from E2A's own conformance data (`_framework_classes`), through project base classes too. (2) Plan: the model names targets, kind, subject, body and changelog line; a declaration change (agent, tool, contract, setting, dependency) is refused with the way to declare it (Section 5.6), and the developer confirms the plan. (3) Edit: the model answers with structured edits (`replace`, `add`, `create`), each checked before anything is written (Table 8). (4) Verify (Table 9), with failures sent back to the model, three attempts at most. (5) Record and commit (Table 10).
+
+**Table 8 — What an edit may touch**
+
+| Region | Allowed |
+|---|---|
+| Developer-owned hooks, functions, tests, new modules | Yes, inside the plan |
+| A method E2A owns (`run`, `execute`, the sealed lifecycle), defined or overridden | No: refused before writing; conformance would also block it |
+| `.a2c/`, `.env*`, `.git/` | Never |
+| `pyproject.toml`, `pom.xml`, lock files, `CHANGELOG.md` | No: versions and the changelog are the tool's, dependencies are declarations |
+| Terraform, `.github/`, Dockerfiles, compose files | Only with `--allow-infra` |
+
+**Table 9 — Verification of a change**
+
+| Check | Passes when |
+|---|---|
+| Before the change | The working tree is clean and the project's tests already pass on the base commit |
+| Compile | Every changed Python file compiles |
+| Conformance | `e2a.conformance` reports no error that the base commit did not have |
+| Secret scan | E2A's release-gate patterns find nothing in the changed files |
+| Critic | `GeneratorCriticAgent.concurrency_findings` finds nothing in the changed files |
+| Tests | The project's tests pass (`pytest` with `src/` on the path, or `--test-command`) |
+| Failure after the last attempt | Files restored, branch removed, `aidlc-change.patch` and `aidlc-change-report.json` left for the developer; nothing committed |
+
+**Table 10 — What every run records**
+
+| Record | Content |
+|---|---|
+| `.a2c/changes/<change-id>.json` | Developer and how they were identified; base commit; prompt with secrets redacted (or only its hash, with `prompt_storage: hash`); plan; A2C version and model; each file's hash before and after; the checks and attempts; the run URL |
+| Version | The next release's version, from the kind of change: breaking → major (minor before 1.0), feature → minor, fix, refactor or upgrade → patch, counted from the last release (newest semantic-version tag, else the newest release in `CHANGELOG.md`). A project never released keeps its version. Tags stay manual |
+| `CHANGELOG.md` | A Keep a Changelog entry under *Unreleased* (Added, Fixed or Changed). No AI marker in any changelog line |
+| `.a2c/manifest.json` `origins` | Each file's origin, `generated` or `changed`, and its change id. `--upgrade` never replaces a `changed` file: it gets a patch, as a hand-edited file does |
+| Audit event | One JSON line per run on the `a2c.audit` logger and stderr (`AIDLC-AUDIT`): `actor`, `actor_is_agent`, `initiated_by`, `initiated_via`, `change_id`, `kind`, `model`, `outcome` (committed, refused, declined, failed verification), `files_changed`, `run_url` |
+
+The model is bound through E2A: `--llm profile:<name>` takes any provider profile (`e2a.bindings_from_profile`), and `replay:<file>` plays recorded answers, which is how the tests run offline and how a reviewed session can be re-run. `--record` saves a live session's answers; the `aidlc-change.yml` workflow keeps them as an artifact. Java projects are refused in v1.5.0, naming v1.5.1.
+
 ## 6. Data Contracts
 
-![Figure 7 — DevRequest fields and writers](images/03_devrequest.png)
+![Figure 8 — DevRequest fields and writers](images/03_devrequest.png)
 
-*Figure 7 — DevRequest fields and writers*
+*Figure 8 — DevRequest fields and writers*
 
 ### 6.1 DevRequest
 
-**Table 6 — DevRequest fields**
+**Table 11 — DevRequest fields**
 
 | Field | Type | Written by | Meaning |
 |---|---|---|---|
@@ -293,7 +359,7 @@ It does not score the cases, because the domain code behind them is written afte
 
 ### 6.4 Configuration
 
-**Table 7 — Configuration**
+**Table 12 — Configuration**
 
 | Key (env) | Default | Used by |
 |---|---|---|
@@ -313,9 +379,9 @@ The A2C keys are registered in the E2A configuration registry at import time and
 
 ## 7. Low-Level Design — Class Model
 
-![Figure 8 — A2C class model](images/02_class_model.png)
+![Figure 9 — A2C class model](images/02_class_model.png)
 
-*Figure 8 — A2C class model*
+*Figure 9 — A2C class model*
 
 | Class | Base | Role |
 |---|---|---|
@@ -333,7 +399,7 @@ The A2C keys are registered in the E2A configuration registry at import time and
 
 ### 8.1 SDLCAssistantAgent
 
-**Table 8 — SDLCAssistantAgent methods**
+**Table 13 — SDLCAssistantAgent methods**
 
 | Method | Kind | Signature → returns | Contract |
 |---|---|---|---|
@@ -356,7 +422,7 @@ The A2C keys are registered in the E2A configuration registry at import time and
 
 ### 8.3 Specialist agents
 
-**Table 9 — Specialist agents**
+**Table 14 — Specialist agents**
 
 | Agent | Writes | `_evaluate_output` score |
 |---|---|---|
@@ -396,7 +462,7 @@ The A2C keys are registered in the E2A configuration registry at import time and
 
 `LocalArtifactWriter.write(root, rel, content, expected_version)` reads the file's current SHA-256 under a per-path lock: equal to the new content → `UNCHANGED`; different from the version read at the start of the run → `CONFLICT`; otherwise write → `COMMITTED`.
 
-**Table 10 — Remote tools (BaseToolService)**
+**Table 15 — Remote tools (BaseToolService)**
 
 | Tool | Endpoint | Idempotency key | Input validation |
 |---|---|---|---|
@@ -421,7 +487,7 @@ Runtime-configuration policy (`approved_clouds`) stays in `_apply_policy`, becau
 
 ### 8.8 Declarations and upgrades (v1.2)
 
-**Table 11 — v1.2 modules**
+**Table 16 — v1.2 modules**
 
 | Module | Public functions | Contract |
 |---|---|---|
@@ -432,19 +498,29 @@ Runtime-configuration policy (`approved_clouds`) stays in `_apply_policy`, becau
 
 `aidlc-build` (`a2c_cli.py`) reads the declarations once in `_prepare`: settings are normalised into `context.settings` and `a2c_sdlc.settings`; contracts are loaded relative to the working directory or the request file and passed to P0 as `context.contract_schemas`; `--repository-layout` overrides `context.repository_layout`. A declaration that cannot be generated stops the build with a JSON error before any model call.
 
+### 8.9 Change mode and provenance (v1.5)
+
+| Module | Contract |
+|---|---|
+| `a2c_provenance` | `resolve_developer(git, author, env) → Developer` (refuses with `ProvenanceError`); `start_run(project_dir, kind, change_parts, branch, author, env, reuse_branch) → Run` checks developer, repository, clean tree and branch before anything is written; `finish_run(run, subject, body, model, files, ...)` bumps the version, adds the changelog entry, marks origins, writes the change record, commits with `commit_message(...)` and emits the audit event; `abandon_run(run, model, outcome, reason)` returns to the starting branch, removes the run's branch and emits the event |
+| `a2c_change` | `CodeIndex(project)` (regions, owned methods, `candidates(prompt)`); `make_plan`, `check_plan`; `Edit` and `check_edit(edit, plan, index, allow_infra)`; `apply_edits` returns the originals so `restore` can undo; `verify(project, changed, baseline_conformance, test_cmd)`; `change(args)` runs the steps; `main()` is the `aidlc-change` command |
+| `a2c_signed_push` | `recreate(repo, owner_repo, branch, base, http) → [sha]`: one API commit per local commit, then the branch ref; `python -m a2c_signed_push --branch <b> --base <sha>` in the workflows |
+| `a2c_cli` | `--commit`, `--author`, `--signoff` for a build and for `--upgrade` |
+| `a2c_upgrade` | Keeps `origins` across upgrades; a file whose origin is `changed` is never replaced |
+
 ## 9. Dynamic Behaviour
 
 ### 9.1 Request lifecycle
 
-![Figure 9 — Validation, claim and the chain of governed agent runs](images/06_seq_run.png)
+![Figure 10 — Validation, claim and the chain of governed agent runs](images/06_seq_run.png)
 
-*Figure 9 — Validation, claim and the chain of governed agent runs*
+*Figure 10 — Validation, claim and the chain of governed agent runs*
 
 ### 9.2 Policy injection
 
-![Figure 10 — _apply_policy(): NFR injection before any model call](images/05_apply_policy.png)
+![Figure 11 — _apply_policy(): NFR injection before any model call](images/05_apply_policy.png)
 
-*Figure 10 — _apply_policy(): NFR injection before any model call*
+*Figure 11 — _apply_policy(): NFR injection before any model call*
 
 Resolution example: a developer supplies `mandatory_nfrs = ['Audit']`; `_apply_policy` adds the six mandatory NFRs and sets `generation_key = 'SettlementEngine:FastAPI Microservice:aws'`; the workflow claim adds `idempotency_key = 'a2c:SettlementEngine:FastAPI Microservice:aws'`; `run()` adds `correlation_id`.
 
@@ -454,9 +530,9 @@ The critic reviews the observability and NFR modules together (both carry every 
 
 ## 10. Concurrency and Capacity
 
-![Figure 11 — Where each bound lives](images/09_capacity.png)
+![Figure 12 — Where each bound lives](images/09_capacity.png)
 
-*Figure 11 — Where each bound lives*
+*Figure 12 — Where each bound lives*
 
 | Concern | Rule |
 |---|---|
@@ -508,7 +584,7 @@ workflow = SDLCWorkflow(config=config, agents=agents)
 
 ## 13. Verification
 
-**Table 12 — Evidence (v1.2.0)**
+**Table 17 — Evidence (v1.2.0, v1.5.0)**
 
 | Suite | What it shows |
 |---|---|
@@ -517,12 +593,14 @@ workflow = SDLCWorkflow(config=config, agents=agents)
 | `smoke_test_declarations.py` (32 checks) | Settings (refusals, three clouds, secret references, values from the project's Terraform, `load_settings`), contracts (examples, `additionalProperties`, the present-only-when idiom, refusal by name, Java records, a test that compiles), Maven coordinates, monorepo workflows, upgrades (replace, add, patch, untouched files, no patch on a repeat, refusal without a baseline). |
 | CI job `declarations` | On AWS, GCP and Azure: a generated service with settings, a secret and a contract passes `terraform fmt` and `terraform test` and its generated tests; a three-agent service passes its tests; a generated monorepo passes `actionlint`. |
 | CI job `images` | The Java image now has a contract, a setting, Flyway and H2, and starts. |
+| `smoke_test_provenance.py` (47 checks, v1.5) | The developer from git or from the workflow's triggering actor; refusals (no identity, another email, a bot, `--author` in a workflow); trailers, `--signoff` only on request, `AIDLC-Run`, the policy's co-author; redaction and `prompt_storage: hash`; versions (never released, after a release, no double bump, major and pre-1.0) in `pyproject.toml` and `pom.xml`; changelog sections; `aidlc-build --commit` locally and as a workflow (author, committer, record, origins, audit, clean tree); refusals for an existing project, a dirty tree, no developer; `--upgrade --commit`; a changed file never replaced by `--upgrade`; the signed push against a fake GitHub API. |
+| `smoke_test_change.py` (30 checks, v1.5) | On a generated service, with recorded model answers: the index and E2A's owned methods; edit refusals (owned method, outside the plan, records, versions, infrastructure without `--allow-infra`); a committed change (branch, author, trailers, files, record, origins, changelog, audit); branch reuse; a retry after a failing test; a failed verification (nothing committed, sources restored, patch and report); a declaration change refused with the way to declare it; an unknown target; a dirty tree; a declined plan; tests already red on the base commit. |
 
 ## 14. Implementation Reality, Gaps and Design Observations
 
 At the earlier baseline no A2C code existed: `BootstrapAndGenerateWorkflow`'s A2C phase was a placeholder and the AI-DLC orchestrator imported `SDLCWorkflow` from a module that did not exist. Both now run the implementation described here. The earlier naming drift (`SDLCBaseAgent`, `CriticAgent`) is resolved in favour of `SDLCAssistantAgent` and `CodeCriticAgent`; the two orders (topology vs NFR-first) are both implemented, NFR-first by default.
 
-**Table 13 — Remaining observations**
+**Table 18 — Remaining observations**
 
 | ID | Observation | Effect | Recommendation |
 |---|---|---|---|
@@ -533,9 +611,12 @@ At the earlier baseline no A2C code existed: `BootstrapAndGenerateWorkflow`'s A2
 | O-5 | The AI-DLC orchestrator passes its `dev_request` object straight to `execute()`, which enriches it in place. | The orchestrator's `result['dev_request']` shows generated content. | Pass a copy in AI-DLC (E2A change). |
 | O-6 | Artifact paths default to `src/generated/…`; `aidlc-build` derives them from the P0 tree (`a2c_artifact_paths`). | Direct `SDLCWorkflow` callers outside `aidlc-build` still get the defaults. | Pass `a2c_artifact_paths`, or build through `aidlc-build`. |
 | O-7 | All tests use in-memory doubles. | Not validated against a live gateway, store or load. | Add adapter tests. |
-| O-8 | A2C's own agents (`SDLCAssistantAgent` and the specialists) use E2A's v1.1 hook signatures. | E2A v1.2 runs them unchanged with one `DeprecationWarning` per class; E2A v1.3 removes that adapter. | Move them to the v1.2 contract before E2A v1.3. |
+| O-8 | Resolved in A2C v1.2.2: A2C's own agents (`SDLCAssistantAgent` and the specialists) use E2A's v1.2 hook contract. | E2A v1.3 removed the v1.1 adapter; A2C runs on it. | None. |
 | O-9 | Settings are values or project Terraform expressions; a setting that needs a per-environment secret version is not modelled. | Teams add version pinning by hand. | Extend the setting declaration if a project needs it. |
 | O-10 | `--upgrade` decides per file; a generator change and your change in the same file need a human (a `.rej` hunk). | Expected: the upgrade never merges silently. | Review `a2c-upgrade.patch`; keep generated files close to their generated form. |
+| O-11 | `aidlc-change` covers Python projects only. | A Java project is refused, naming v1.5.1. | A Java code index on e2a-java classes (AD-01 plan step 3). |
+| O-12 | The model's answers are tested by replay; no live model has run a change yet, and GitHub's signing of API commits is tested against a fake API. | The first live run is the check. | Run one real change on order-to-cash (AD-01 plan step 4) and confirm the commit shows as Verified. |
+| O-13 | Locating the code ranks names and docstrings against the prompt. | A vague prompt can plan the wrong region; the plan shows it before any edit. | Use `--target` for an exact change. |
 
 ## Appendix A. Glossary
 
@@ -549,6 +630,8 @@ At the earlier baseline no A2C code existed: `BootstrapAndGenerateWorkflow`'s A2
 | Declaration (v1.2) | A request field that replaces a hand patch: settings, contracts, dependencies, repository layout. |
 | Manifest (v1.2) | `<project>/.a2c/manifest.json`: version, request and hashes of the generated files; the basis of `--upgrade`. |
 | Second phase | Explicit `SDLCWorkflow` run after G2C class generation. |
+| Change record (v1.5) | `.a2c/changes/<change-id>.json`: who asked, from which commit, the prompt, the plan, the model, file hashes and the checks of one run. |
+| `Assisted-by` (v1.5) | The commit trailer that discloses the tool and model: `a2c-framework/<version>:<model>`. |
 
 ## Appendix B. Traceability
 
@@ -561,5 +644,6 @@ At the earlier baseline no A2C code existed: `BootstrapAndGenerateWorkflow`'s A2
 | G-5, INV-07 | `LocalArtifactWriter`, `SDLCAgentChain._write` | L368, L497 |
 | INV-01, INV-06 | `SDLCWorkflow` (inherits `execute`) | L529 |
 | Declarations, upgrades (v1.2) | `a2c_settings`, `a2c_contracts`, `a2c_layout`, `a2c_upgrade`; `a2c_cli._prepare` | modules |
+| Change mode and provenance (v1.5, AD-01) | `a2c_change`, `a2c_provenance`, `a2c_signed_push`; `a2c_cli --commit`; `a2c_upgrade` origins | modules |
 | Configuration | A2C keys registered | L48–71 |
 | Tools | `CodeGenTool` … `TerraformValidateTool` | L612–670 |

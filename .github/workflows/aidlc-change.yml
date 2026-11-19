@@ -1,0 +1,135 @@
+name: aidlc-change (reusable)
+
+# Reusable workflow (A2C v1.5.0, hub design note AD-01): changes existing code of a service in the
+# CALLING repository from a prompt, with aidlc-change, and opens a pull request for review.
+# The commit's AUTHOR is the person who started the run; the bot is only the committer. The
+# commit carries Change-Id, Assisted-by, AIDLC-Run and Prompt-Sha256, never a Signed-off-by
+# (nobody signs off on the developer's behalf: the pull request approval is the attestation).
+# The model's answers and the run's log are kept as an artifact, linked by AIDLC-Run.
+#
+#   on:
+#     workflow_dispatch:
+#       inputs:
+#         project: {description: "service folder", required: true}
+#         prompt: {description: "the change", required: true}
+#         target: {description: "optional path::Class.method", required: false}
+#   jobs:
+#     change:
+#       permissions:
+#         contents: write
+#         pull-requests: write
+#       uses: subhamviky/a2c-framework/.github/workflows/aidlc-change.yml@v1.5.0
+#       with:
+#         project: ${{ inputs.project }}
+#         prompt: ${{ inputs.prompt }}
+#         target: ${{ inputs.target }}
+#         a2c_ref: v1.5.0
+#         provider_profile: anthropic_bedrock
+#         provider_requirement: "e2a-managed-providers @ git+https://github.com/subhamviky/e2a-managed-providers.git@main"
+#       secrets: inherit          # the model provider's credentials, as the profile reads them
+on:
+  workflow_call:
+    inputs:
+      project: {description: "the service folder, relative to the repository root", required: true, type: string}
+      prompt: {description: "the change request", required: true, type: string}
+      target: {description: "optional: path::Class.method, relative to the project", required: false, type: string, default: ""}
+      kind: {description: "optional: feature | fix | refactor | breaking", required: false, type: string, default: ""}
+      a2c_ref: {description: "a2c-framework tag", required: true, type: string}
+      provider_profile: {description: "E2A provider profile that binds the model", required: true, type: string}
+      provider_requirement: {description: "pip requirement for the profile's package", required: false, type: string, default: ""}
+      allow_infra: {description: "allow Terraform, CI and container files", required: false, type: boolean, default: false}
+      signed: {description: "push through GitHub's API so that GitHub signs the commit", required: false, type: boolean, default: true}
+
+jobs:
+  change:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      PROJECT: ${{ inputs.project }}
+      PROMPT: ${{ inputs.prompt }}
+      TARGET: ${{ inputs.target }}
+      KIND: ${{ inputs.kind }}
+      A2C_REF: ${{ inputs.a2c_ref }}
+      E2A_PROVIDER_PROFILE: ${{ inputs.provider_profile }}
+      REQUIREMENT: ${{ inputs.provider_requirement }}
+      ALLOW_INFRA: ${{ inputs.allow_infra }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0              # tags: the version moves from the last release
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install aidlc-change (and the profile's package)
+        run: |
+          pip install "a2c-framework @ git+https://github.com/subhamviky/a2c-framework.git@${A2C_REF}" pytest
+          if [ -n "$REQUIREMENT" ]; then pip install "$REQUIREMENT"; fi
+          if [ -f "$PROJECT/pyproject.toml" ]; then pip install "./$PROJECT"; fi   # its dependencies, for its tests
+
+      - name: Who started the run (the commit's author)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LOGIN: ${{ github.triggering_actor }}
+        run: |
+          echo "AIDLC_DEVELOPER_LOGIN=$LOGIN" >> "$GITHUB_ENV"
+          echo "AIDLC_DEVELOPER_ID=$(gh api "users/$LOGIN" --jq .id)" >> "$GITHUB_ENV"
+
+      - name: Change the code (plan, edit, verify, commit)
+        id: change
+        run: |
+          echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          args=(--project "$PROJECT" --prompt "$PROMPT" --yes --record "$RUNNER_TEMP/aidlc-answers.json")
+          [ -n "$TARGET" ] && args+=(--target "$TARGET")
+          [ -n "$KIND" ] && args+=(--kind "$KIND")
+          [ "$ALLOW_INFRA" = "true" ] && args+=(--allow-infra)
+          out="$RUNNER_TEMP/aidlc-change-result.json"
+          aidlc-change "${args[@]}" > "$out" 2> "$RUNNER_TEMP/aidlc-run.log" || { cat "$out"; cat "$RUNNER_TEMP/aidlc-run.log" >&2; exit 1; }
+          cat "$out"
+          echo "branch=$(python -c "import json, sys; print(json.load(open(sys.argv[1]))['branch'])" "$out")" >> "$GITHUB_OUTPUT"
+          echo "subject=$(git log -1 --format=%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Push the branch
+        env:
+          BRANCH: ${{ steps.change.outputs.branch }}
+          BASE: ${{ steps.change.outputs.base }}
+          SIGNED: ${{ inputs.signed }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$SIGNED" = "true" ]; then
+            python -m a2c_signed_push --branch "$BRANCH" --base "$BASE"
+          else
+            git push origin "$BRANCH"
+          fi
+
+      - name: Open the pull request (review is the gate)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.change.outputs.branch }}
+          SUBJECT: ${{ steps.change.outputs.subject }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REQUESTER: ${{ github.triggering_actor }}
+        run: |
+          {
+            echo "Requested by @$REQUESTER with aidlc-change; run: $RUN_URL"
+            echo
+            echo '```json'; cat "$RUNNER_TEMP/aidlc-change-result.json"; echo '```'
+            echo
+            echo "Merge or rebase this pull request; a squash merge must keep the commit trailers."
+            echo "Where the repository has a second reviewer, the requester should not be the only approver."
+          } > "$RUNNER_TEMP/pr-body.md"
+          gh pr create --head "$BRANCH" --base "${{ github.event.repository.default_branch }}" --title "$SUBJECT" --body-file "$RUNNER_TEMP/pr-body.md"
+
+      - name: Keep the model's answers and the run's log (audit)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aidlc-change-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/aidlc-answers.json
+            ${{ runner.temp }}/aidlc-run.log
+            ${{ runner.temp }}/aidlc-change-result.json
+            aidlc-change.patch
+            aidlc-change-report.json
+          if-no-files-found: ignore
