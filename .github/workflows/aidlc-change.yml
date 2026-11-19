@@ -137,7 +137,9 @@ jobs:
           out="$RUNNER_TEMP/aidlc-change-result.json"
           aidlc-change "${args[@]}" > "$out" 2> "$RUNNER_TEMP/aidlc-run.log" || { cat "$out"; cat "$RUNNER_TEMP/aidlc-run.log" >&2; exit 1; }
           cat "$out"
-          echo "branch=$(python -c "import json, sys; print(json.load(open(sys.argv[1]))['branch'])" "$out")" >> "$GITHUB_OUTPUT"
+          branch=$(python -c "import json, sys; print(json.load(open(sys.argv[1])).get('branch', ''))" "$out")
+          if [ -z "$branch" ]; then echo "::error::aidlc-change did not name its branch"; exit 1; fi
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
           echo "subject=$(git log -1 --format=%s)" >> "$GITHUB_OUTPUT"
 
       - name: Push the branch
@@ -173,7 +175,7 @@ jobs:
 
       - name: Keep the model's answers and the run's log (audit)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: aidlc-change-${{ github.run_id }}
           path: |

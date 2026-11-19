@@ -96,7 +96,7 @@ def run(repo, tmp, answers, *extra, prompt='Name the reason of the degraded answ
     finally:
         os.chdir(cwd)
     text = out.getvalue()
-    return rc, json.loads(text[text.index('\n{') + 1:] if not text.startswith('{') else text), err.getvalue()
+    return rc, json.loads(text), err.getvalue()
 
 
 with tempfile.TemporaryDirectory() as tmp:

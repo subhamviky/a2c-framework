@@ -71,7 +71,7 @@ def run(repo, tmp, answers, *extra, prompt='Give the degraded answer a reason'):
     finally:
         os.chdir(cwd)
     text = out.getvalue()
-    return rc, json.loads(text[text.index('\n{') + 1:] if not text.startswith('{') else text), err.getvalue()
+    return rc, json.loads(text), err.getvalue()      # stdout is the JSON result only (v1.5.3): the workflow parses it
 
 
 with tempfile.TemporaryDirectory() as tmp:

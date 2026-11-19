@@ -365,6 +365,7 @@ aidlc-change --project orders --prompt "Refuse orders above the customer's credi
 
 | a2c-framework | e2a-framework | capability-oriented-dsa (used by generated services) |
 |---|---|---|
+| `v1.5.3` | `v1.6.1` (and e2a-java `1.6.1` for Java) | `v0.2.x`, `v0.3.x` |
 | `v1.5.2` | `v1.6.1` (and e2a-java `1.6.1` for Java) | `v0.2.x`, `v0.3.x` |
 | `v1.5.1` | `v1.6.1` (and e2a-java `1.6.1` for Java) | `v0.2.x`, `v0.3.x` |
 | `v1.5.0` | `v1.6.1` (and e2a-java `1.6.1` for Java) | `v0.2.x`, `v0.3.x` |

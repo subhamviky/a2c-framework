@@ -102,7 +102,7 @@ jobs:
 
       - name: Keep the run's log (audit)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: aidlc-run-${{ github.run_id }}
           path: ${{ runner.temp }}/aidlc-run.log

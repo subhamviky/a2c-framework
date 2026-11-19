@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.5.3 — Fix: the aidlc-change workflow could not name its branch
+
+### Fixed
+- **`aidlc-change` prints only its JSON result on standard output**; the plan goes to standard error. The workflow read the branch from standard output, got the plan in front of the JSON, and pushed to an empty branch name (`refs/heads/ is not a valid ref name`). The workflow now also stops with a clear error if the branch is missing.
+- **`actions/upload-artifact@v5`** (Node 24) in `aidlc-change.yml` and `aidlc-scaffold.yml`.
+
 ## v1.5.2 — aidlc-change through the cloud account (hub design note AD-01, plan step 4)
 
 Workflow only; no code change.
