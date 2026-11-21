@@ -1,5 +1,5 @@
 """A2C v1.2.1 (wave C note C-04): E2A's release gate in generated projects, evaluation sets
-declared in the request, and Phase C on E2A's checks."""
+declared in the request, and Phase C on E2A's checks. v1.6.0 (EV-01): runnable cases."""
 import copy
 import json
 import os
@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 
 from a2c_cli import ProjectStaticPipeline, build
-from a2c_evaluation import normalize_evaluation
+from a2c_evaluation import gate_module, normalize_evaluation
 
 passed = 0
 HERE = Path(__file__).resolve().parent
@@ -42,6 +42,8 @@ check('an unknown evaluation key is refused', refused(lambda: normalize_evaluati
 check('a path outside the project is refused', refused(lambda: normalize_evaluation({'set': '../x.json'}), 'relative path'))
 check('a threshold outside (0, 1] is refused', refused(lambda: normalize_evaluation({'threshold': 1.5}), 'threshold'))
 check('no evaluation declared means none', normalize_evaluation(None) is None and normalize_evaluation({}) is None)
+check('without a declared harness the gate keeps the stubs, which fail until written',
+      'implement _score_case(case)' in gate_module('pkg', {'set': 'evals/golden.json'}))
 
 java = json.loads((HERE / 'examples/requests/java-azure-service.json').read_text())
 java.setdefault('a2c_sdlc', {})['evaluation'] = {'set': 'evals/golden.json'}
@@ -63,25 +65,47 @@ with tempfile.TemporaryDirectory() as tmp:
     check('the CI runs the generated gate after the tests, with the declared threshold',
           ci.index('pytest -q') < ci.index('python -m agents_service.release.gate --skip-tests')
           and '"faithfulness_threshold": 0.8' in ci)
-    check('Phase C read the evaluation sets (one example case each)',
-          report['evaluation_cases'] == {'evals/golden.json': 1, 'evals/redteam.json': 2}
+    check('Phase C read the evaluation sets (one runnable case per agent; two red-team cases)',
+          report['evaluation_cases'] == {'evals/golden.json': 3, 'evals/redteam.json': 2}
           and 'well formed' in report['stage_notes']['ragas_gate'])
     check('Phase C used E2A conformance (strict) on the generated code',
           'e2a.conformance (strict)' in report['stage_notes']['scaffold_compliance'])
-    done = gate(root, 'agents_service.release.gate')
-    check('the generated gate fails until the scorer is written',
-          done.returncode == 1 and 'implement _score_case' in done.stdout, done.stdout + done.stderr)
-    text = (pkg / 'release' / 'gate.py').read_text()
-    text = text.replace('raise NotImplementedError("decide how a case is scored: implement _score_case(case)")',
-                        "return 1.0 if case.get('expected') else 0.0")
-    text = text.replace('raise NotImplementedError("decide how a red-team case is checked: implement _probe(case)")',
-                        'return []')
-    (pkg / 'release' / 'gate.py').write_text(text)
+    golden = json.loads((root / 'evals/golden.json').read_text())
+    by_id = {c['id']: c for c in golden}
+    check('v1.6.0: each case declares what a run must show (steps, own tools, not another route\'s tools)',
+          set(by_id) == {'router_agent', 'order_agent', 'status_agent'}
+          and by_id['order_agent']['expect']['trajectory'] == {'steps_required': ['route', 'act'],
+                                                                 'tools_required': ['get_price', 'submit_payment'],
+                                                                 'tools_forbidden': ['get_order']}
+          and by_id['status_agent']['simulated'] == {'RouterAgent': {'intent': 'STATUS'}, 'StatusAgent': {}},
+          json.dumps(golden, indent=1))
     done = gate(root, 'agents_service.release.gate')
     result = json.loads((root / 'gate.json').read_text())
-    check('with a scorer and a probe written, the generated gate passes all seven stages',
-          done.returncode == 0 and result['rag_eval_score'] == 1.0 and len(result['stages']) == 7,
-          done.stdout + done.stderr)
+    check('v1.6.0: the generated gate passes out of the box, all seven stages, on real checks',
+          done.returncode == 0 and result['rag_eval_score'] == 1.0 and len(result['stages']) == 7
+          and result['evidence']['redteam'] == [], done.stdout + done.stderr)
+    check('the evidence says what produced it (wiring, the simulated profile, one trial)',
+          result['evidence']['run'] == {'evidence_kind': 'wiring', 'profile': 'simulated', 'model': None, 'trials': 1},
+          json.dumps(result['evidence'].get('run')))
+    broken = json.loads(json.dumps(golden))
+    for case in broken:
+        if case['id'] == 'status_agent':
+            case['simulated']['RouterAgent']['intent'] = 'ORDER'      # the request now goes down the wrong route
+    (root / 'evals/golden.json').write_text(json.dumps(broken))
+    done = gate(root, 'agents_service.release.gate')
+    result = json.loads((root / 'gate.json').read_text())
+    check('a request routed to the wrong agent fails the gate (its tool was not called, a forbidden one was)',
+          done.returncode == 1 and result['rag_eval_score'] < 1.0
+          and 'get_order was not called' in json.dumps(result['evidence']['evaluation']), done.stdout + done.stderr)
+    (root / 'evals/golden.json').write_text(json.dumps(golden + [{'id': 'unscored', 'input': {'query': 'x'}}]))
+    done = gate(root, 'agents_service.release.gate')
+    check('a case without `expect` still fails the gate (fail-closed)',
+          done.returncode == 1 and 'expect' in done.stdout + done.stderr, done.stdout + done.stderr)
+    (root / 'evals/golden.json').write_text(json.dumps(golden))
+    redteam = json.loads((root / 'evals/redteam.json').read_text())
+    check('the red-team cases: an injection causes no material effect; a card number does not come back',
+          redteam['injections'][0]['expect']['trajectory'] == {'tools_forbidden': ['submit_payment']}
+          and redteam['pii'][0]['expect'] == {'no_pii': True})
 
     (pkg / 'settings_local.py').write_text('TOKEN = "AKIA' + 'ABCDEFGHIJKLMNOP"\n')
     phase_c = ProjectStaticPipeline(root, 'python', 'gcp', e2a_contract='1.2',

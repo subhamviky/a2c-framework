@@ -16,6 +16,7 @@ offline, no account. The request file is an AIDLCPipelineRequest:
 import argparse
 import ast
 import compileall
+import copy
 import json
 import logging
 import re
@@ -30,7 +31,7 @@ from a2c_base import MANDATORY_NFRS
 import g2c_java12
 import g2c_v12
 
-E2A_REF = 'v1.6.1'          # the E2A version this A2C release generates for (its own pin)
+E2A_REF = 'v1.9.1'          # the E2A version this A2C release generates for (its own pin)
 from a2c_contracts import contracts_from
 from a2c_layout import LAYOUTS, move_workflows
 from a2c_upgrade import UpgradeError, clean_request, generated_files, upgrade, write_manifest
@@ -214,6 +215,8 @@ def _prepare(request: Dict[str, Any], output: Path) -> Dict[str, Any]:
                          'e2a.release.ProjectReleaseGate')
     if evaluation:
         ctx['evaluation'] = a2c['evaluation'] = evaluation
+        # v1.6.0 (EV-01): the declared agents and workflow, so P0 writes runnable evaluation cases
+        ctx['evaluation_harness'] = g2c_v12.normalize(copy.deepcopy(harness))
     ctx['release_gate'] = harness['e2a_contract'] == '1.2' and runtime == 'python'
     # v1.2 (A-5): contracts are read (and checked) once, relative to the working directory or the request
     base = Path(request.get('_request_dir', '.'))
@@ -270,6 +273,11 @@ def build(request: Dict[str, Any], output: Path, run_tests: bool = False) -> Dic
         'errors': result.get('errors', []),
         'llm_usage': llm.usage_summary(),
     }
+    if not report['success']:       # v1.6.0 (E2A v1.9.1, EV-01 2.4): can the same request simply be run again?
+        report['retryable'] = bool(result.get('retryable', True))
+        if not report['retryable']:
+            report['next_step'] = ('this request fails the same way every time: fix what the errors and findings '
+                                   'name, then run aidlc-build again')
     layout = request['context'].get('repository_layout', 'single')
     if root.is_dir() and layout == 'monorepo':           # v1.2 (P-6): workflows run from the repository root
         report['root_workflows'] = move_workflows(Path(output), request['context']['project_name'])
@@ -332,7 +340,8 @@ def main(argv=None) -> int:
     if run:
         report['provenance'] = _finish_create(run, request, Path(args.output), report, args.signoff)
     print(json.dumps({k: report[k] for k in ('success', 'phase_reached', 'project_root', 'critic_score',
-                                             'findings', 'errors', 'llm_usage', 'root_workflows', 'provenance')
+                                             'findings', 'errors', 'retryable', 'next_step', 'llm_usage', 'root_workflows',
+                                             'provenance')
                       if k in report}, indent=2, default=str))
     return 0 if report['success'] else 1
 

@@ -90,7 +90,9 @@ NFR_PATTERNS = {
 
 
 class GovernanceViolationError(NFRViolationError):
-    """A request outside the approved clouds or agents."""
+    """A request outside the approved clouds or agents. The same request fails the same way every
+    time, so it says it is not retryable: E2A v1.9.1's is_retryable() settles it final (A2C O-2)."""
+    retryable = False
 
 
 class DevRequest(TypedDict, total=False):
@@ -127,14 +129,51 @@ def strip_comments(code: str) -> str:
     return re.sub(r'(?s)("""|\'\'\').*?\1', '', code)
 
 
+def python_code_terms(code: str) -> Optional[str]:
+    """v1.6.0 (EV-01 2.3, A2C O-1): what Python code does, from its syntax tree: imported modules,
+    names, dotted attributes, calls (as "name("), function, class, parameter and keyword names, and
+    string constants that are paths ("/health"). Comments, docstrings and other strings (log
+    messages, prompts) are not code and are left out. None when the code is not Python."""
+    import ast
+    try:
+        tree = ast.parse(code or '')
+    except (SyntaxError, ValueError):
+        return None
+    terms: List[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            terms.append(node.id)
+        elif isinstance(node, ast.Attribute):
+            terms.append(ast.unparse(node))
+        elif isinstance(node, ast.Call):
+            terms.append(ast.unparse(node.func) + '(')
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            terms.append(node.name)
+        elif isinstance(node, ast.alias):
+            terms += [node.name] + ([node.asname] if node.asname else [])
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            terms.append(node.module)
+        elif isinstance(node, ast.arg):
+            terms.append(node.arg)
+        elif isinstance(node, ast.keyword) and node.arg:
+            terms.append(node.arg)
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.startswith('/'):
+            terms.append(node.value)
+    return '\n'.join(terms).lower()
+
+
 def nfr_pattern_report(code: str, nfrs: List[str]) -> Dict[str, Any]:
-    """Deterministic check: which requested NFRs appear as code."""
-    body = strip_comments(code).lower()
+    """Deterministic check: which requested NFRs appear as code. Python is read from its syntax
+    tree (v1.6.0), so an NFR named only in a comment, docstring or log message does not count;
+    other languages use the patterns with comments removed."""
+    terms = python_code_terms(code)
+    method = 'ast' if terms is not None else 'pattern'
+    body = terms if terms is not None else strip_comments(code).lower()
     known = [n for n in nfrs if n in NFR_PATTERNS]
-    found = [n for n in known if re.search(NFR_PATTERNS[n], body)]
+    found = [n for n in known if re.search(NFR_PATTERNS[n], body, re.I)]
     missing = [n for n in known if n not in found]
     score = (len(found) / len(known)) if known else 1.0
-    return {'score': round(score, 4), 'passed': found, 'missing': missing}
+    return {'score': round(score, 4), 'passed': found, 'missing': missing, 'method': method}
 
 
 def _text(response) -> str:

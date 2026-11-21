@@ -118,10 +118,13 @@ check('duplicate request replays without a model call', r2.get('replayed') and l
 check('replay carries the artifacts in response', 'generated_iac' in r2['response'] and r2['response']['status'] == 'GENERATED')
 
 # ---- 4 governance: unapproved cloud never reaches the model
-llm4 = FakeLLM(); cfg4 = {'llm_service': llm4}
+llm4 = FakeLLM(); cfg4 = {'llm_service': llm4, 'idempotency_store': InMemoryIdempotencyStore()}
 r = SDLCWorkflow(config=cfg4).execute(dev(target_cloud='onprem'), cfg4)
 check('unapproved cloud stops the run before a model call', r['status'] == 'AGENT_FAILED' and llm4.calls == 0
       and any('not approved' in e for e in r['errors']))
+check('v1.6.0 (E2A v1.9.1): an unapproved cloud settles final, never redelivered (A2C O-2)',
+      r['failure'] == {'error': 'GovernanceViolationError', 'retryable': False}
+      and cfg4['idempotency_store'].state_of(r['idempotency_key'], 't1') == 'FAILED_FINAL')
 
 # ---- 5 NFRs only in comments: critic fails, business code regenerated with findings
 root5, llm5 = tempfile.mkdtemp(), FakeLLM(weak=1)

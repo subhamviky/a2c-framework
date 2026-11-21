@@ -9,9 +9,9 @@
 | Framework | G2C — Generate-to-Class (top layer of the E2A / A2C / P0 framework stack) |
 | Document type | Design Document (HLD + LLD) |
 | Author | Subham Gupta, Principal Platform Architect |
-| Source baseline | `subhamviky/a2c-framework` `v1.2.1` — `g2c_v12.py` (v1.2), `g2c_java12.py` (v1.2.1), `base_generator_agent.py`, `inherited_generator.py`, the four generators, `generator_critic_agent.py`, `generator_templates.py`, `generator_factory.py`, `developer_platform_workflow.py`, `generator_api_router.py`, `typedicts.py`, `a2c_concurrency.py` |
-| Date | 13 November 2026 (v1.2.1; v1.2.0 the same day; baseline 7 November 2026) |
-| Status | Aligned to A2C v1.2.1 and its smoke tests (wave C, design note C-01; wave D, design note D-01) |
+| Source baseline | `subhamviky/a2c-framework` `v1.6.0` (critic changes of v1.6.0 in Section 8.5; the rest as of `v1.2.1`) — `g2c_v12.py` (v1.2), `g2c_java12.py` (v1.2.1), `base_generator_agent.py`, `inherited_generator.py`, the four generators, `generator_critic_agent.py`, `generator_templates.py`, `generator_factory.py`, `developer_platform_workflow.py`, `generator_api_router.py`, `typedicts.py`, `a2c_concurrency.py` |
+| Date | 21 November 2026 (v1.6.0, Section 8.5; v1.2.1 on 13 November 2026; baseline 7 November 2026) |
+| Status | Aligned to A2C v1.6.0 and its smoke tests (wave C, design note C-01; wave D, design note D-01; hub note EV-01 for the critic) |
 
 ## 1. Introduction
 
@@ -298,7 +298,7 @@ Design note D-01 (G-4). E2A v1.2.2 ships e2a-java, the E2A runtime for Java. G2C
 | Abstract generators | `base_class_name` (also names the key); `abstract_methods`; `class_description`. |
 | Inherited generators | `agent_name` (defaults to the first of `agents`); `abstract_class_source`; `abstract_class_path`; `abstract_class_config`; `package_name`; `scaffold` (P0 `ScaffoldRequest`; missing identity fields default from the request). |
 | E2A v1.2 (v1.2) | `e2a_contract` (`"1.2"` default for Python `e2a_inherited`, else `"1.1"`); `agents`; `workflow`; `governance`; `project_package` (set by `aidlc-build` when no scaffold result carries the package). |
-| Model | `model_id`; `critic_model_id`. |
+| Model | `model_id`; `critic_model_id` (v1.6.0: turns on the semantic review; also `config['critic_model_id']`, `GENERATOR_CRITIC_MODEL_ID`). |
 | Advanced | `fingerprint_exclude` (fields left out of the claim fingerprint). |
 | Written by `generate()` | `generator_key`; `generated_files`; `critic_report`; `errors` (on the internal copy). |
 
@@ -449,7 +449,7 @@ Resolution order is config › environment › default.
 
 | Method | Signature → returns | Contract |
 |---|---|---|
-| `review` | `(response, request) → {score, critic_type, missing, passed, findings}` | Rules of Table 8 for `config['critic_type']` or `request['generator_type']`; Python is parsed with `ast` (a syntax error scores 0). |
+| `review` | `(response, request) → {score, critic_type, missing, passed, findings}` | Rules of Table 8 for `config['critic_type']` or `request['generator_type']`; Python is parsed with `ast`, Java compiled with `javac`, and since v1.6.0 TypeScript (Node) checked with `tsc` (syntax errors only) and Go with `gofmt -e`, each when the tool is on `PATH`; a syntax error scores 0. `critic_config['syntax_check'] = False` turns the Node and Go checks off. |
 | `score` | `(response, request) → float` | `review()['score']`. |
 | `concurrency_findings` | `(source) → List[str]` | Shared-gateway rule violations. |
 
@@ -463,7 +463,9 @@ Resolution order is config › environment › default.
 | `e2a_inherited`, `a2c_inherited` | Class `<agent_name>` exists (else 0.5); has a base (`SDLCAssistantAgent` for A2C); `_build_messages` and `_evaluate_output` overridden; no `run`/`execute`/`retrieve` override; no name-mangled private access | 0.15 each |
 | `e2a_inherited` with `e2a_contract: "1.2"` | As above, but `_evaluate_output` is required only for an agent with a model step; each `e2a.conformance` R1 finding in the source | 0.15 each |
 
-The critic is deterministic and makes no model call; `GeneratorCriticAgent` checks generated class structure, A2C's `CodeCriticAgent` checks NFR patterns in generated business code.
+`GeneratorCriticAgent` is deterministic and makes no model call: it checks generated class structure, and A2C's `CodeCriticAgent` checks NFR patterns in generated business code.
+
+**Semantic review (v1.6.0, opt-in).** When a critic model is named (`critic_model_id` in the request or the config, or `GENERATOR_CRITIC_MODEL_ID`) and a model is bound, `BaseGeneratorAgent._critic_review` also asks that model whether the file does what the request asks, with correct logic. The review goes through `config['llm_service']` like every model call, under the run's claim (`<generator_key>:critic<attempt>`), tenant, trace and deadline. It must answer `{"score", "missing"}` as JSON; an unreadable answer scores 0.0. The reported score is the lower of the structural and the semantic one, as in A2C's `CodeCriticAgent`; both are kept in `critic_report` (`structural_score`, `semantic`), and the semantic findings are added to `missing`, which drives the regeneration prompt. Output the structural check scores 0.0 is not sent for review. A failed review call is `InferenceRejected` (retryable; nothing is written). Without a critic model the behaviour is unchanged.
 
 ### 8.6 g2c_v12 (v1.2)
 
@@ -622,7 +624,7 @@ GeneratorFactory.register('e2a_tool', E2AToolServiceGenerator)
 
 ## 13. Verification
 
-**Table 11 — Evidence (v1.2.0)**
+**Table 11 — Evidence (v1.2.0, v1.6.0)**
 
 | Suite | What it shows |
 |---|---|
@@ -631,6 +633,7 @@ GeneratorFactory.register('e2a_tool', E2AToolServiceGenerator)
 | `smoke_test_aidlc_integration.py` (15 checks) | E2A's AI-DLC orchestrator calls `DeveloperPlatformWorkflow(config=...)` on the real module and reaches `E2A_VERIFIED`. |
 | `smoke_test_g2c_v12.py` (17 checks) | Refusals (kind, unknown agent, stage, schema on a deterministic agent); a three-agent request builds with the critic at 1.0; v1.2 hooks; deterministic agent without a model step, writes through `io_modify`; output schema validated; material tools; no application service; generated tests; strict conformance; one request through the generated workflow routes to the right agent; the E2A dependency; Java with `1.2` refused; a single-agent request defaults to v1.2. |
 | CI job `declarations` (gcp) | The three-agent example passes its own generated tests. |
+| `smoke_test_critic_v160.py` (17 checks, v1.6.0) | With recorded model answers: no critic model, no review; one review with the named model under the run's claim key; the lower score wins and both are recorded; a low semantic score fails after the regenerations; an unreadable review scores 0.0; a failed review call is retryable and writes nothing; `GENERATOR_CRITIC_MODEL_ID`; broken output is not sent for review; TypeScript (`tsc`) and Go (`gofmt`) syntax errors score 0.0, and the check can be turned off. |
 
 ## 14. Implementation Reality, Gaps and Design Observations
 
@@ -640,8 +643,8 @@ The stubs recorded against the earlier baseline are replaced on this branch: pub
 
 | ID | Observation | Effect | Recommendation |
 |---|---|---|---|
-| O-1 | The critic is deterministic and structural; the Reference's model-assisted critic (`critic_model_id`) is not used. | Semantic defects that keep the structure pass. | Add an optional model review whose score is combined with the structural one (lower wins), as A2C's `CodeCriticAgent` does. |
-| O-2 | Non-Python outputs are checked by patterns, not parsed. | Weaker evidence for Java, Node and Go. | Add parsers per runtime in CI. |
+| O-1 | Resolved in v1.6.0: an optional semantic review (`critic_model_id`) is combined with the structural score (lower wins). Without a critic model the critic stays structural. | Semantic defects pass only when no critic model is named. | Name a critic model where a model account exists; the project's tests and release gate remain the proof. |
+| O-2 | Resolved in v1.6.0 for syntax: Java is compiled (`javac`), TypeScript checked with `tsc` and Go with `gofmt -e` when the tool is present; their structure is still read by patterns, and imports are not resolved for Node and Go. | A file that parses but calls a missing API passes the critic; the project build finds it. | Keep the toolchains in CI (A2C's CI installs `tsc`). |
 | O-3 | `source='prompt'` is rejected by the generators. | Free text goes in `user_prompt`; no structured extraction of the request from prose. | Add prompt resolution through the gateway if needed. |
 | O-4 | Template-mode skeletons are minimal. | Useful for structure and offline runs, not as finished code. | Treat template output as a starting point; regenerate with a gateway. |
 | O-5 | The `local` fast path (no store) reuses any existing file at the abstract output location. | Two different `base_class_name`s targeting one directory share a file. | Use distinct `abstract_class_output_path`s, or a store. |
