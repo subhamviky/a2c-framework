@@ -18,10 +18,14 @@ Rule sets (critic_type, from config or request['generator_type']):
   (every type)   concurrency rules: no agent-level _validate_state, no own
                  semaphore or rate limiter, no provider SDK import or call
 
-Python output is parsed with ast; other runtimes use patterns. Java output is
+Python output is parsed with ast; other runtimes use patterns for the structure. Java output is
 also compiled with `javac` (with the abstract base files the request points
 to) when a JDK is on PATH; a compile error scores 0.0. Disable with
-critic_config['java_compile_check'] = False. The checks are
+critic_config['java_compile_check'] = False. Since v1.6.0 (EV-01, 2.3) Node (TypeScript) output is
+syntax-checked with `tsc` (syntax errors only: the imports are not resolved) and Go output with
+`gofmt -e`, when the tool is on PATH; a syntax error scores 0.0. Disable with
+critic_config['syntax_check'] = False. An optional model review is combined by
+BaseGeneratorAgent (lower wins) when a critic model is named. The checks are
 structural, not a proof of correctness. Deductions: 0.25 per concurrency
 finding, 0.10 per missing E2A class, 0.15 per missing required element.
 """
@@ -96,6 +100,13 @@ class GeneratorCriticAgent:
             if error is not None:
                 passed.append('compiles')
 
+        if runtime in ('node', 'go') and ctype and self.config.get('syntax_check', True):
+            error = self._syntax_error(source, runtime)
+            if error:
+                return self._report(0.0, ctype, [f'{runtime} syntax error: {error}'], passed, findings)
+            if error is not None:
+                passed.append('parses')
+
         if ctype == 'e2a_abstract':
             names = self._class_names(tree, source)
             for c in E2A_CLASSES:
@@ -153,6 +164,34 @@ class GeneratorCriticAgent:
                 return ''
             errors = [l for l in proc.stderr.splitlines() if 'error:' in l]
             return (errors[0].split('error:', 1)[1].strip() if errors else 'javac failed')
+
+    @staticmethod
+    def _syntax_error(source, runtime):
+        """v1.6.0: None when the tool is not on PATH; '' when the source parses; otherwise the first
+        syntax error. TypeScript: tsc's TS1xxx diagnostics (syntax), imports not resolved. Go: gofmt -e."""
+        tool = shutil.which('tsc' if runtime == 'node' else 'gofmt')
+        if not tool:
+            return None
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / ('generated.ts' if runtime == 'node' else 'generated.go')
+            path.write_text(source, encoding='utf-8')
+            if runtime == 'node':
+                cmd = [tool, '--noEmit', '--noResolve', '--isolatedModules', '--skipLibCheck',
+                       '--target', 'es2022', str(path)]
+            else:
+                cmd = [tool, '-e', str(path)]
+            try:
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            except (OSError, subprocess.TimeoutExpired):
+                return None
+            if runtime == 'node':
+                errors = [l for l in proc.stdout.splitlines() + proc.stderr.splitlines()
+                          if re.search(r'error TS1\d{3}:', l)]
+                return errors[0].split(':', 2)[-1].strip() if errors else ''
+            if proc.returncode == 0:
+                return ''
+            lines = [l for l in proc.stderr.splitlines() if l.strip()]
+            return lines[0].split(':', 3)[-1].strip() if lines else 'gofmt failed'
 
     @staticmethod
     def _class_names(tree, source):

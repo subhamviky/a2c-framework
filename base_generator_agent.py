@@ -25,6 +25,7 @@ Concurrency contract (§17):
 Without config['llm_service'] a generator runs in TEMPLATE mode: it emits a
 deterministic skeleton from _template_output() that passes the same critic.
 """
+import contextvars
 import json
 import logging
 import os
@@ -65,6 +66,17 @@ def _setting(key, config, env, default, cast=float):
     if os.getenv(env) is not None:
         return cast(os.getenv(env))
     return cast(default)
+
+
+# v1.6.0 (EV-01, 2.2): the model call the critic is part of (key, tenant, trace, deadline), so the
+# optional semantic review runs under the same claim and limits without changing the hook signatures
+_CRITIC_CALL = contextvars.ContextVar('a2c_critic_call', default=None)
+
+SEMANTIC_REVIEW_PROMPT = (
+    'You review a source file generated for the E2A framework. Score 0.0-1.0: does it do what the '
+    'request asks, with correct logic (not only the right structure)? Look for wrong or missing '
+    'behaviour, hooks that ignore their inputs, unsafe defaults and contradictions with the request. '
+    'Return JSON only: {"score": float, "missing": ["..."]}')
 
 
 class BaseGeneratorAgent(ABC):
@@ -321,8 +333,48 @@ class BaseGeneratorAgent(ABC):
         critic_cfg = dict((config or {}).get('critic_config') or {})
         critic_cfg.setdefault('critic_type', self.critic_type or request.get('generator_type'))
         report = GeneratorCriticAgent(critic_cfg).review(response, request)
+        semantic = self._semantic_review(response, request, config or {}, report)
+        if semantic is not None:            # v1.6.0: the lower score wins, as in A2C's CodeCriticAgent
+            report['structural_score'] = report['score']
+            report['semantic'] = semantic
+            report['score'] = round(min(report['score'], semantic['score']), 4)
+            report['missing'] = list(report['missing']) + [f'semantic: {m}' for m in semantic['missing']]
         request['critic_report'] = report
         return report['score']
+
+    def _semantic_review(self, response, request, config, structural):
+        """Optional model review (v1.6.0, EV-01 2.2; G2C O-1). Runs only when a critic model is
+        named (request['critic_model_id'], config['critic_model_id'] or GENERATOR_CRITIC_MODEL_ID)
+        and a model is bound; never on output the structural check already scored 0.0. Goes
+        through config['llm_service'] like every model call; a rejected call raises
+        InferenceRejected (retryable). An unreadable review scores 0.0. Returns None when skipped."""
+        model_id = (request.get('critic_model_id') or (config or {}).get('critic_model_id')
+                    or os.getenv('GENERATOR_CRITIC_MODEL_ID'))
+        service = (config or {}).get('llm_service')
+        if not model_id or service is None or structural.get('score', 0.0) <= 0.0:
+            return None
+        call = _CRITIC_CALL.get() or {}
+        source = response if isinstance(response, str) else str(response or '')
+        messages = [{'role': 'system', 'content': SEMANTIC_REVIEW_PROMPT},
+                    {'role': 'user', 'content': (
+                        f"Generator: {self.generator_type or request.get('generator_type', '')}; runtime: "
+                        f"{request.get('runtime', 'python')}; class: "
+                        f"{request.get('agent_name') or request.get('base_class_name') or ''}\n"
+                        f"Request: {request.get('description') or request.get('user_prompt') or ''}\n\n"
+                        f"Source:\n{source}")}]
+        out = run_coro_sync(service.process_inference(
+            messages, tenant_id=call.get('tenant_id') or request.get('tenant_id'), deadline=call.get('deadline'),
+            correlation_id=call.get('trace_id'), idempotency_key=call.get('key'), model_id=model_id))
+        if out.get('status') != 'SUCCESS':
+            raise InferenceRejected(out.get('error', 'critic model call failed'),
+                                    out.get('error_type', 'InferenceRejected'))
+        try:
+            review = json.loads(_strip_fences(out.get('text', '')) or '{}')
+            score = max(0.0, min(1.0, float(review.get('score', 0.0))))
+            missing = [str(m) for m in (review.get('missing') or [])]
+        except (json.JSONDecodeError, ValueError, TypeError, AttributeError):
+            score, missing = 0.0, ['the semantic review was not readable JSON']
+        return {'score': round(score, 4), 'missing': missing, 'model_id': model_id}
 
     def _write_file(self, root, relative_path, content) -> str:
         """Base-owned writer for subclasses: mkdir -p, write UTF-8, absolute path."""
@@ -399,7 +451,12 @@ class BaseGeneratorAgent(ABC):
             response = self._infer(system_prompt, prompt, request, config, deadline,
                                    f"{key}:attempt{attempt}", tenant_id, trace_id, **kwargs)
             check_deadline(deadline, "critic")
-            score = self._evaluate_output(response, request, config, **kwargs)
+            token = _CRITIC_CALL.set({'key': f"{key}:critic{attempt}", 'tenant_id': tenant_id,
+                                      'trace_id': trace_id, 'deadline': deadline})
+            try:
+                score = self._evaluate_output(response, request, config, **kwargs)
+            finally:
+                _CRITIC_CALL.reset(token)
             if score >= threshold:
                 break
             prompt = user_prompt + "\n\n" + str(self._fallback(request, config, **kwargs))

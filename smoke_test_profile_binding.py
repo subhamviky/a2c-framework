@@ -38,7 +38,7 @@ def request():
     return json.loads((HERE / 'examples/requests/agents-python.json').read_text())
 
 
-check('this A2C release generates for E2A v1.6.1 (e2a.bindings and its simulated profile)', E2A_REF == 'v1.6.1')
+check('this A2C release generates for E2A v1.9.1 (e2a.bindings, e2a.evals and the release gate defaults)', E2A_REF == 'v1.9.1')
 check('B-2 the default profile is "simulated"', g2c_v12.normalize({'agents': ['A']})['provider_profile'] == 'simulated')
 check('a profile name that is not a name is refused', refused(
     lambda: g2c_v12.normalize({'agents': ['A'], 'provider_profile': '../etc/passwd'}), 'provider_profile'))

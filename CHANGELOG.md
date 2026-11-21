@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.6.0 — Evaluation in generated services, and stronger critics (hub design note EV-01, phase 2)
+
+Generates for, and depends on, **E2A v1.9.1** (Python) and **e2a-java 1.9.1**.
+
+### Added
+- **Runnable evaluation cases** (EV-01 2.1). With `a2c_sdlc.evaluation` and declared agents, the generated release gate implements E2A's `_run_case` (it runs the service on one case with fresh bindings), and the golden set holds one case per agent the workflow can reach, with an `expect` block: the steps on its path complete, its own tools are called, other routes' tools are not, its model answer is accepted. The red-team set holds an injection case (no material effect, the system prompt not revealed) and a personal-data case (no card number in the answer). E2A's default scorers score them, so a new service passes its gate on real checks from the first commit, and fails it when a request takes the wrong route. On the `simulated` profile each case's `simulated` answers stand in for the model (wiring evidence); on another profile the bound model answers. A case without `expect` still fails. Without declared agents the gate keeps the stubs.
+- **Optional semantic review in G2C's critic** (EV-01 2.2, G2C O-1). With a critic model named (`critic_model_id` in the request or config, or `GENERATOR_CRITIC_MODEL_ID`), the model reviews each generated file through `llm_service`, under the run's claim; the reported score is `min(structural, semantic)`, both kept in `critic_report`. An unreadable review scores 0.0; a failed review call is a retryable `inference_rejected`; output that fails the structural check is not reviewed. Off by default.
+- **Syntax checks for Node and Go output** (EV-01 2.3, G2C O-2): TypeScript with `tsc` (syntax errors only, imports not resolved), Go with `gofmt -e`, when the tool is on `PATH`; a syntax error scores 0.0. `critic_config['syntax_check'] = False` turns them off. CI installs `tsc`.
+- **`aidlc-build` says whether a failed build can be rerun** (EV-01 2.4): `retryable` in the report and, when it is `false`, a `next_step`.
+
+### Changed
+- **The Python NFR check reads the syntax tree** (EV-01 2.3, A2C O-1). Imported modules, names, dotted attributes, calls, definitions, parameters and path strings count; docstrings, comments and other strings (log messages) do not. Other languages keep the pattern check. The report adds `method` (`ast` or `pattern`).
+- **`GovernanceViolationError` declares `retryable = False`**: with E2A v1.9.1 an unapproved cloud settles `FAILED_FINAL` and a redelivery is not run again (A2C O-2).
+- The E2A pin moves from v1.6.1 to v1.9.1 (generated services, A2C itself and its CI); e2a-java from 1.6.1 to 1.9.1.
+
+### Fixed
+- The Observability pattern's `logging.getLogger` alternative never matched (it was compared case-sensitively with lowercased code); patterns are now matched case-insensitively.
+
 ## v1.5.4 — Workflow commits: what GitHub really signs (found on the first live run)
 
 ### Changed
