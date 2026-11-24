@@ -394,7 +394,7 @@ A2C operates as a core pillar of the enterprise generative AI and distributed sy
 | Project | Generated services | Target cloud (A2C landing zone) |
 |---|---|---|
 | [`financial-settlement-platform`](https://github.com/subhamviky/financial-settlement-platform) | `settlement-service` (Java 21, Maven), `audit-ai-service` (Python, Poetry) | Azure |
-| [`aws-reconciliation-engine`](https://github.com/subhamviky/aws-reconciliation-engine) | `reconciliation-service` (Python, Lambda) | AWS |
+| [`payment-reconciliation-engine`](https://github.com/subhamviky/payment-reconciliation-engine) | `reconciliation-service` (Python, Lambda) | AWS |
 | [`order-to-cash-agentic-ai`](https://github.com/subhamviky/order-to-cash-agentic-ai) | `o2c-agent-service` (Python, Cloud Run) | Google Cloud |
 
 ---
