@@ -242,5 +242,7 @@ def ci_step(pkg: str, evaluation: Optional[Dict[str, Any]]) -> str:
     module = f'{pkg}.release.gate' if evaluation else 'e2a.release'
     config = '' if not evaluation or 'threshold' not in evaluation else (
         f" --config '{{\"fleet_replica_count\": 1, \"faithfulness_threshold\": {evaluation['threshold']}}}'")
+    # A block scalar: the threshold's JSON holds ": ", which a plain YAML scalar cannot (v1.6.1)
     return ('      - name: Release gate (E2A ProjectReleaseGate; the tests ran in the step above)\n'
-            f'        run: poetry run python -m {module} --skip-tests --report release-gate-report.json{config}\n')
+            '        run: |\n'
+            f'          poetry run python -m {module} --skip-tests --report release-gate-report.json{config}\n')
