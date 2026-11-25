@@ -27,7 +27,7 @@ The G2C framework operates across four interleaved layers:
 
 In practice, a team may already possess one or more of these layers from a prior service build. Blindly re-running all seven phases wastes compute, risks overwriting hand-tuned artifacts, and introduces unnecessary IaC drift. This document formalises the four canonical entry-point scenarios and specifies the exact phase activation pattern for each.
 
-> **✔ TIP** This document is authoritative for phase-trigger decisions within portfolio projects: aws-reconciliation-engine, order-to-cash-agentic-ai, and financial-settlement-platform.
+> **✔ TIP** This document is authoritative for phase-trigger decisions within portfolio projects: payment-reconciliation-engine, order-to-cash-agentic-ai, and financial-settlement-platform.
 
 ## 2. Seven-Phase Framework Architecture
 
