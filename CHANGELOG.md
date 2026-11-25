@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.6.1 — The generated release-gate step is valid YAML
+
+### Fixed
+- With `a2c_sdlc.evaluation.threshold` set, the release-gate step of the generated Python CI was a plain YAML scalar holding the threshold's JSON (`{"fleet_replica_count": 1, ...}`); its `": "` made the whole workflow invalid, so GitHub ran none of it. The step is now a block scalar. The smoke test parses the generated workflow as YAML. Found when enterprise-finance-genai-assistant was generated (hub design note GCP-01).
+
 ## v1.6.0 — Evaluation in generated services, and stronger critics (hub design note EV-01, phase 2)
 
 Generates for, and depends on, **E2A v1.9.1** (Python) and **e2a-java 1.9.1**.

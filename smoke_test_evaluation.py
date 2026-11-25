@@ -65,6 +65,10 @@ with tempfile.TemporaryDirectory() as tmp:
     check('the CI runs the generated gate after the tests, with the declared threshold',
           ci.index('pytest -q') < ci.index('python -m agents_service.release.gate --skip-tests')
           and '"faithfulness_threshold": 0.8' in ci)
+    import yaml
+    steps = [st for job in yaml.safe_load(ci)['jobs'].values() for st in job['steps']]
+    check('v1.6.1: the generated CI is valid YAML; the gate step keeps the threshold JSON intact',
+          any('"faithfulness_threshold": 0.8}' in str(st.get('run', '')) for st in steps))
     check('Phase C read the evaluation sets (one runnable case per agent; two red-team cases)',
           report['evaluation_cases'] == {'evals/golden.json': 3, 'evals/redteam.json': 2}
           and 'well formed' in report['stage_notes']['ragas_gate'])
