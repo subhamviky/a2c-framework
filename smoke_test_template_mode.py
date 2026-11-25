@@ -3,6 +3,7 @@ files, the A2C template LLM and the `aidlc-build` CLI (Python and Java).
 Needs e2a-framework installed (pip install) or E2A_REFERENCE_PATH set.
 Run: python smoke_test_template_mode.py"""
 import json
+import re
 import logging
 import os
 import shutil
@@ -145,6 +146,9 @@ for name, request in (
     port = '8000' if name == 'python' else '8080'
     check(f'aidlc-build {name}: Terraform container_port equals the Dockerfile port ({port})',
           f'default     = {port}' in tf and f'EXPOSE {port}' in (root / 'Dockerfile').read_text())
+    delivery = (root / '.github' / 'workflows' / 'a2c-ci.yml').read_text()
+    check(f'v1.6.2 aidlc-build {name}: the image scanner is pinned to a tag that exists (trivy-action tags carry a v)',
+          re.search(r'aquasecurity/trivy-action@v\d+\.\d+\.\d+\b', delivery) is not None)
 
 # ---- aidlc-build on AWS: the Lambda handler points at the generated entry module
 aws_request = {'tenant_id': 't1',
