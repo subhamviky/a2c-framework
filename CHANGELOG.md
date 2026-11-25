@@ -1,5 +1,9 @@
 # Changelog
 
+## Seen in the cloud (25 November 2026, no release)
+
+The generated delivery workflow (v1.6.2) and release-gate step (v1.6.1) ran in the GenAI assistant's CI, and the assistant (scaffolded by `aidlc-build`) was deployed and exercised on Google Cloud. Two follow-ups for the generator, recorded as design observations O-14 and O-15 in the A2C design document: patch the base image's OS packages in the generated Dockerfiles, and generate tolerant JSON extraction (and a deterministic repair) in model-reading agents. Neither is implemented yet.
+
 ## v1.6.2 — The generated delivery workflow resolves its image scanner
 
 ### Fixed
