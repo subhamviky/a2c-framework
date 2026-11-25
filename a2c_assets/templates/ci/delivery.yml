@@ -62,7 +62,7 @@ jobs:
       - name: Build the container image
         run: docker build -t {{project_slug}}:${{ github.sha }} .
       - name: Scan the image (Trivy)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: "{{project_slug}}:${{ github.sha }}"
           severity: CRITICAL,HIGH

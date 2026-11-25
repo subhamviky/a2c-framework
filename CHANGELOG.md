@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.6.2 — The generated delivery workflow resolves its image scanner
+
+### Fixed
+- The generated delivery workflow pinned `aquasecurity/trivy-action@0.28.0`, a tag that does not exist (the action's tags carry a `v`), so the image job of every generated service failed before it started. It is `v0.36.0` now. The smoke test checks that the pinned tag has the `v` form. Found on enterprise-finance-genai-assistant's first `main` build (hub design note GCP-01).
+
 ## v1.6.1 — The generated release-gate step is valid YAML
 
 ### Fixed
