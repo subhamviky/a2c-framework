@@ -1,5 +1,7 @@
 # A2C: Architecture-to-Code Developer Platform Framework
 
+![A2C — Architecture-to-Code](docs/assets/a2c-banner.png)
+
 > **An AI-governed software factory framework designed to programmatically enforce enterprise-grade architectural discipline, Infrastructure-as-Code (IaC), and secure CI/CD pipelines at generation time.**
 
 [![Status: Active Design](https://img.shields.io/badge/Status-Active%20Design-yellow.svg)](https://github.com/subhamviky/a2c-framework)
