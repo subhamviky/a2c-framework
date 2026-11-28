@@ -18,4 +18,4 @@ B (P27).
 
 ## Consequences
 
-A free-tier model, a frontier model or the simulated model is a configuration change.
+A small model, a frontier model or the simulated model is a configuration change.
