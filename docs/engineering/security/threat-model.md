@@ -1,6 +1,6 @@
 # Threat model: a2c-framework
 
-- **Status:** Reviewed 2026-11-28 · STRIDE for a code generator: the risks are in what it writes into other people's projects and pipelines.
+- **Status:** Draft 2026-11-28, awaiting owner review · STRIDE for a code generator: the risks are in what it writes into other people's projects and pipelines.
 
 | # | Threat | Control | Evidence |
 |---|---|---|---|
